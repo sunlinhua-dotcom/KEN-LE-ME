@@ -1,7 +1,9 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Camera } from 'lucide-react-native';
+import { useEffect } from 'react';
 import { StatusBar, Text, TouchableOpacity, View } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function HomeScreen() {
@@ -10,6 +12,41 @@ export default function HomeScreen() {
     const handleSnap = () => {
         router.push('/camera');
     };
+
+    // Animation Shared Values
+    const scale = useSharedValue(1);
+    const ringScale = useSharedValue(1);
+    const ringOpacity = useSharedValue(0.6);
+
+    useEffect(() => {
+        // Breathing effect for the main button
+        scale.value = withRepeat(
+            withTiming(1.05, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+            -1,
+            true // reverse
+        );
+
+        // Ripple/Pulse effect for the ring
+        ringScale.value = withRepeat(
+            withTiming(1.6, { duration: 2000, easing: Easing.out(Easing.ease) }),
+            -1,
+            false
+        );
+        ringOpacity.value = withRepeat(
+            withTiming(0, { duration: 2000, easing: Easing.out(Easing.ease) }),
+            -1,
+            false
+        );
+    }, []);
+
+    const animatedButtonStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }]
+    }));
+
+    const animatedRingStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: ringScale.value }],
+        opacity: ringOpacity.value,
+    }));
 
     return (
         <LinearGradient
@@ -23,38 +60,53 @@ export default function HomeScreen() {
                 {/* Header */}
                 <View className="w-full px-8 flex-row justify-between items-center">
                     <View>
-                        <Text className="text-white text-4xl font-extrabold tracking-tighter">坑了么</Text>
-                        <Text className="text-pink-400 text-xs tracking-[0.3em] uppercase font-semibold">Bright Wine</Text>
+                        <Text className="text-white text-4xl font-extrabold tracking-tighter shadow-lg">坑了么</Text>
+                        <Text className="text-pink-400 text-xs tracking-[0.4em] uppercase font-semibold ml-1">Bright Wine</Text>
                     </View>
-                    <TouchableOpacity className="w-12 h-12 bg-white/10 rounded-full items-center justify-center backdrop-blur-md border border-white/10">
-                        {/* Placeholder for avatar/settings */}
-                        <View className="w-6 h-6 rounded-full bg-pink-500" />
-                    </TouchableOpacity>
+                    <View className="w-12 h-12 bg-white/5 rounded-full items-center justify-center border border-white/10 shadow-inner">
+                        <View className="w-3 h-3 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.8)]" />
+                    </View>
                 </View>
 
                 {/* Center Action */}
-                <View className="items-center justify-center">
-                    <TouchableOpacity
-                        onPress={handleSnap}
-                        activeOpacity={0.8}
-                        className="rounded-full shadow-2xl shadow-pink-500/40"
-                    >
-                        <LinearGradient
-                            colors={['#FF1493', '#FF007F']} // Bright Pink Gradient
-                            className="w-56 h-56 rounded-full items-center justify-center border-4 border-white/10"
+                <View className="items-center justify-center flex-1">
+                    <View className="relative items-center justify-center">
+                        {/* Pulsing Ring */}
+                        <Animated.View
+                            className="absolute w-56 h-56 rounded-full bg-pink-500"
+                            style={animatedRingStyle}
+                        />
+
+                        {/* Breathing Button */}
+                        <TouchableOpacity
+                            onPress={handleSnap}
+                            activeOpacity={0.9}
+                            className="z-10"
                         >
-                            <Camera color="white" size={80} strokeWidth={1.5} />
-                        </LinearGradient>
-                    </TouchableOpacity>
-                    <Text className="text-white mt-10 text-xl font-medium tracking-wide opacity-90">
-                        拍酒单，看看那个<Text className="text-pink-500 font-bold">坑</Text>
+                            <Animated.View
+                                style={[animatedButtonStyle]}
+                                className="shadow-[0_0_40px_rgba(255,20,147,0.6)] rounded-full"
+                            >
+                                <LinearGradient
+                                    colors={['#FF1493', '#FF007F']} // Bright Pink Gradient
+                                    className="w-56 h-56 rounded-full items-center justify-center border-4 border-white/20"
+                                >
+                                    <Camera color="white" size={88} strokeWidth={1.5} />
+                                </LinearGradient>
+                            </Animated.View>
+                        </TouchableOpacity>
+                    </View>
+
+                    <Text className="text-white mt-16 text-xl font-medium tracking-wide opacity-90 shadow-sm">
+                        拍酒单，看看那个<Text className="text-pink-500 font-bold text-2xl">坑</Text>
                     </Text>
                 </View>
 
-                {/* Footer / History */}
-                {/* Footer Spacer */}
-                <View className="w-11/12 h-20 items-center justify-center opacity-30">
-                    <Text className="text-white text-xs tracking-widest uppercase">Powered by Gemini 3.0</Text>
+                {/* Footer */}
+                <View className="w-full items-center justify-center opacity-40 mb-4">
+                    <Text className="text-white text-[10px] tracking-[0.2em] uppercase font-bold text-center">
+                        POWERED BY BRIGHT305
+                    </Text>
                 </View>
             </SafeAreaView>
         </LinearGradient>

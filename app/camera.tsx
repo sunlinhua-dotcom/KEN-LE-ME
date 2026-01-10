@@ -2,16 +2,23 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { Image as ImageIcon, RotateCcw, X } from 'lucide-react-native';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function CameraScreen() {
-    const [facing, setFacing] = useState('back');
+    const [facing, setFacing] = useState<any>('back');
     const [permission, requestPermission] = useCameraPermissions();
-    const cameraRef = useRef(null);
+    const cameraRef = useRef<CameraView>(null);
     const router = useRouter();
     const [isTakingPicture, setIsTakingPicture] = useState(false);
+
+    // Auto-request permission on mount if not determined yet
+    useEffect(() => {
+        if (permission && !permission.granted && permission.canAskAgain) {
+            requestPermission();
+        }
+    }, [permission]);
 
     if (!permission) {
         return <View className="flex-1 bg-black" />;
@@ -41,7 +48,7 @@ export default function CameraScreen() {
     }
 
     function toggleCameraFacing() {
-        setFacing(current => (current === 'back' ? 'front' : 'back'));
+        setFacing((current: any) => (current === 'back' ? 'front' : 'back'));
     }
 
     async function takePicture() {

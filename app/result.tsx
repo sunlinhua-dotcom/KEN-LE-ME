@@ -81,15 +81,53 @@ export default function ResultScreen() {
         return { text: '💣 巨坑', color: 'bg-red-500' };
     };
 
+    // Timer state
+    const [seconds, setSeconds] = useState(0);
+    const [loadingText, setLoadingText] = useState("正在连接 AI 大脑...");
+
+    useEffect(() => {
+        let timer: NodeJS.Timeout;
+        let textTimer: NodeJS.Timeout;
+        if (loading) {
+            timer = setInterval(() => {
+                setSeconds(s => s + 0.1);
+            }, 100);
+
+            // Randomly update text to make it feel "thinking"
+            const messages = [
+                "正在识别酒标...",
+                "正在扫描年份...",
+                "正在全网比价 (淘宝/京东)...",
+                "AI正在组织语言...",
+                "正在计算防坑指数..."
+            ];
+            textTimer = setInterval(() => {
+                setLoadingText(messages[Math.floor(Math.random() * messages.length)]);
+            }, 1500);
+
+            return () => {
+                clearInterval(timer);
+                clearInterval(textTimer);
+            };
+        }
+    }, [loading]);
+
     if (loading) {
         return (
             <View className="flex-1 bg-[#0F0F1A] items-center justify-center px-8">
-                <ActivityIndicator size="large" color="#FF1493" />
-                <Text className="text-white mt-6 font-bold text-xl text-center">AI 侍酒师正在赶来...</Text>
-                <Text className="text-gray-500 text-sm mt-3 text-center">
-                    正在识别酒标、年份、产区...
-                    {"\n"}
-                    并全网比价中...
+                <View className="w-24 h-24 rounded-full border-4 border-pink-500/30 items-center justify-center mb-8">
+                    <ActivityIndicator size="large" color="#FF1493" />
+                    <View className="absolute w-24 h-24 rounded-full border-t-4 border-pink-500 animate-spin" />
+                </View>
+
+                <Text className="text-white font-bold text-2xl mb-2">{seconds.toFixed(1)}s</Text>
+                <Text className="text-pink-400 font-bold text-lg text-center mb-4">{loadingText}</Text>
+
+                <View className="w-full bg-white/10 h-1 rounded-full overflow-hidden">
+                    <View className="h-full bg-pink-500 w-1/2" />
+                </View>
+                <Text className="text-gray-500 text-xs mt-4 text-center">
+                    正在调用 Gemini 3.0 Pro 模型进行深度分析...
                 </Text>
             </View>
         );
@@ -105,7 +143,7 @@ export default function ResultScreen() {
             <SafeAreaView className="flex-1">
                 {/* Header */}
                 <View className="px-6 py-4 flex-row justify-between items-center z-10">
-                    <TouchableOpacity onPress={() => router.back()} className="p-2 bg-white/10 rounded-full">
+                    <TouchableOpacity onPress={() => router.dismissAll()} className="p-2 bg-white/10 rounded-full">
                         <ArrowLeft color="white" size={24} />
                     </TouchableOpacity>
                     <Text className="text-white text-xl font-bold">
@@ -193,11 +231,21 @@ export default function ResultScreen() {
 
                                         {/* Bottom: Logic & Badge */}
                                         <View className="flex-row justify-between items-center pt-2 border-t border-gray-100">
-                                            <Text className="text-gray-500 text-xs text-right">
-                                                电商参考价: <Text className="font-bold text-gray-700">
-                                                    {wine.onlinePrice ? `¥${wine.onlinePrice}` : '查询中'}
+                                            <View>
+                                                <Text className="text-gray-500 text-xs">
+                                                    电商参考价: <Text className="font-bold text-gray-700">
+                                                        {wine.onlinePrice ? `¥${wine.onlinePrice}` : '查询中'}
+                                                    </Text>
                                                 </Text>
-                                            </Text>
+                                                {wine.diff !== null && wine.diff !== undefined && (
+                                                    <Text className="text-gray-500 text-xs mt-1">
+                                                        {wine.diff > 0 ? '商家溢价: ' : '低于电商: '}
+                                                        <Text className={`font-bold ${wine.diff > 0 ? 'text-red-500' : 'text-green-600'}`}>
+                                                            ¥{Math.abs(wine.diff)}
+                                                        </Text>
+                                                    </Text>
+                                                )}
+                                            </View>
 
                                             <View className={`px-4 py-3 rounded-full ${badge.color} flex-row items-center shadow-md`}>
                                                 <Text className="text-white text-base font-black mr-1">{badge.text}</Text>
@@ -215,7 +263,7 @@ export default function ResultScreen() {
 
                         {/* Footer branding for screenshot */}
                         <View className="items-center mt-8 opacity-50">
-                            <Text className="text-white text-xs tracking-widest uppercase">Powered by 坑了么 AI</Text>
+                            <Text className="text-white text-xs tracking-widest uppercase">POWERED BY BRIGHT305</Text>
                         </View>
 
                     </ScrollView>
