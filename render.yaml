@@ -1,0 +1,3 @@
+web:
+  buildCommand: npm install && npx expo export -p web
+  staticPublishPath: dist
