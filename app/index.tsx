@@ -37,10 +37,12 @@ export default function HomeScreen() {
 
     const takePhoto = async () => {
         try {
-            const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-            if (!permissionResult.granted) {
-                Alert.alert("需要权限", "请允许访问相机以进行拍摄");
-                return;
+            if (Platform.OS !== 'web') {
+                const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+                if (!permissionResult.granted) {
+                    Alert.alert("需要权限", "请允许访问相机以进行拍摄");
+                    return;
+                }
             }
 
             setIsLoading(true);
@@ -83,7 +85,18 @@ export default function HomeScreen() {
             }
         } catch (error) {
             console.error("Gallery Error:", error);
-            Alert.alert("错误", "无法打开相册");
+            // Fallback for some Androids that fail with multiple selection
+            try {
+                const result = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                    allowsEditing: false,
+                    quality: 0.8,
+                    allowsMultipleSelection: false // Fallback to single
+                });
+                if (!result.canceled) processImage(result);
+            } catch (e) {
+                Alert.alert("错误", "无法打开相册");
+            }
         } finally {
             setIsLoading(false);
             setLoadingMessage("");
@@ -91,14 +104,10 @@ export default function HomeScreen() {
     };
 
     const handleMainButtonPress = () => {
-        if (Platform.OS === 'web') {
-            // On Web, launchImageLibraryAsync acts as the native file picker (Camera + Gallery)
-            // This is the CICO behavior the user requested.
-            pickImage();
-        } else {
-            // On Native, stick to Camera for big button, user uses secondary button for Gallery
-            takePhoto();
-        }
+        // Always invoke Camera for the main button, even on Web
+        // This solves the issue where specific Android devices (OnePlus)
+        // don't show the "Camera" option in the File Picker.
+        takePhoto();
     };
 
     // Animation Shared Values
