@@ -32,7 +32,13 @@
       "favicon": "./assets/images/favicon.png",
       "display": "standalone",
       "backgroundColor": "#0F0F1A",
-      "themeColor": "#FF1493"
+      "themeColor": "#0F0F1A",
+      "meta": {
+        "apple": {
+          "mobileWebAppCapable": "yes",
+          "statusBarStyle": "black-translucent"
+        }
+      }
     },
     "plugins": [
       "expo-router",
