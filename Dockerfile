@@ -7,6 +7,8 @@ COPY package.json ./
 
 # Install dependencies (force legacy peer deps to avoid conflicts)
 RUN npm install --legacy-peer-deps
+# Explicitly ensure react-native-svg is installed for web build
+RUN npm install react-native-svg
 RUN npm install -g serve
 
 # Copy project files

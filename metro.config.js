@@ -4,4 +4,9 @@ const { withNativeWind } = require('nativewind/metro');
 
 const config = getDefaultConfig(__dirname);
 
+// Fix for ESM packages on Web (like lucide-react-native)
+if (config.resolver) {
+    config.resolver.sourceExts.push('mjs');
+}
+
 module.exports = withNativeWind(config, { input: './global.css' });
