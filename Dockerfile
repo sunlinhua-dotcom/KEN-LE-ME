@@ -1,19 +1,19 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy package files (ensure you don't copy the lockfile if it causes issues, or regenerate it)
+COPY package.json ./
 
-# Install dependencies (including serve globally)
-RUN npm install
+# Install dependencies (force legacy peer deps to avoid conflicts)
+RUN npm install --legacy-peer-deps
 RUN npm install -g serve
 
 # Copy project files
 COPY . .
 
 # Build the web app
-RUN npm run build
+RUN npx expo export -p web
 
 # Expose port 8080 (Zeabur default)
 EXPOSE 8080
