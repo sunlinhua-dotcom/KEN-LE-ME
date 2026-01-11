@@ -267,9 +267,14 @@ export default function HomeScreen() {
                     </View>
 
                     {selectedImages.length === 0 ? (
-                        <Text className="text-white mt-10 text-xl font-medium tracking-wide opacity-90 shadow-sm">
-                            拍酒单，看看那个<Text className="text-pink-500 font-bold text-2xl">坑</Text>
-                        </Text>
+                        <View className="items-center mt-10 space-y-3">
+                            <Text className="text-white text-xl font-medium tracking-wide opacity-90 shadow-sm text-center">
+                                拍酒单，看看那个<Text className="text-pink-500 font-bold text-2xl"> 坑</Text>
+                            </Text>
+                            <Text className="text-gray-400 text-xs font-medium tracking-wider text-center max-w-[80%] leading-5">
+                                可鉴别：红酒 / 雪茄 / 酒单 / 菜单 / 消费小票 / 外卖平台截图
+                            </Text>
+                        </View>
                     ) : (
                         <Text className="text-white/60 mt-6 text-sm">
                             点击上图继续添加，或下方开始分析
@@ -356,9 +361,12 @@ export default function HomeScreen() {
 
                 {/* Footer Branding */}
                 {selectedImages.length === 0 && (
-                    <View className="w-full items-center justify-center opacity-40 mb-4">
-                        <Text className="text-white text-[10px] tracking-[0.2em] uppercase font-bold text-center">
+                    <View className="w-full items-center justify-center mb-6">
+                        <Text className="text-white text-[10px] tracking-[0.2em] uppercase font-bold text-center opacity-40">
                             POWERED BY BRIGHT305
+                        </Text>
+                        <Text className="text-gray-500 text-[10px] mt-1 font-medium tracking-widest">
+                            WeChat: sunlinhuamj
                         </Text>
                     </View>
                 )}
