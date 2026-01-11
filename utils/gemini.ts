@@ -30,7 +30,7 @@ const MOCK_DATA: AnalysisResult = {
     ]
 };
 
-export async function analyzeWineList(imageUri: string): Promise<AnalysisResult> {
+export async function analyzeWineList(imageUris: string[]): Promise<AnalysisResult> {
 
     // Helper to process and sort items
     const processItems = (result: AnalysisResult): AnalysisResult => {
@@ -64,26 +64,25 @@ export async function analyzeWineList(imageUri: string): Promise<AnalysisResult>
     }
 
     try {
-        let base64 = "";
+        console.log(`✂️ Processing ${imageUris.length} images...`);
 
-        console.log("✂️ Compressing/Resizing Image...");
-        // Compress and Resize locally to speed up upload & processing
-        const manipResult = await ImageManipulator.manipulateAsync(
-            imageUri,
-            [{ resize: { width: 1024 } }], // Resize width to 1024px
-            { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true } // Compress to 60% quality
-        );
+        // Process ALL images in parallel
+        const base64Promises = imageUris.map(async (uri) => {
+            // Compress and Resize locally
+            const manipResult = await ImageManipulator.manipulateAsync(
+                uri,
+                [{ resize: { width: 1024 } }],
+                { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+            );
 
-        if (manipResult.base64) {
-            base64 = manipResult.base64;
-            console.log("✅ Image compressed successfully.");
-        } else {
-            // Fallback
+            if (manipResult.base64) return manipResult.base64;
+
+            // Fallback for web/others if base64 missing
             console.warn("⚠️ Manipulator didn't return base64, reading from file...");
             if (Platform.OS === 'web') {
                 const response = await fetch(manipResult.uri);
                 const blob = await response.blob();
-                base64 = await new Promise((resolve, reject) => {
+                return await new Promise<string>((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onloadend = () => {
                         if (typeof reader.result === 'string') resolve(reader.result.split(',')[1]);
@@ -92,30 +91,36 @@ export async function analyzeWineList(imageUri: string): Promise<AnalysisResult>
                     reader.readAsDataURL(blob);
                 });
             } else {
-                base64 = await FileSystem.readAsStringAsync(manipResult.uri, { encoding: 'base64' });
+                return await FileSystem.readAsStringAsync(manipResult.uri, { encoding: 'base64' });
             }
-        }
+        });
 
-        if (!base64) throw new Error("Failed to process image data");
+        const base64List = await Promise.all(base64Promises);
+
+        if (base64List.some(b => !b)) throw new Error("Failed to process one or more images");
 
         const PROMPT = `
       You are a Master Sommelier and Wine Market Auditor for China.
-      Analyze this image (Wine List or Single Bottle).
+      Analyze these images (Wine List Pages or Multiple Bottles).
 
       **Tasks:**
-      1. **DETECT TYPE:**
-         - If the image contains a list of items with prices (text), treat as "menu".
-         - If the image contains ONLY bottles (e.g. on a table, in hand) and NO price list, treat as "single".
+      1. **DETECT TYPE & MERGE:**
+         - These images belong to ONE session (e.g. page 1, page 2 of a menu OR multiple bottles on a table).
+         - Treat them as a SINGLE combined input.
+         - If ANY image contains a list of prices, treat the whole set as "menu".
+         - If ALL images are just bottles with no text list, treat as "single" (collection of bottles).
       
       2. **CRITICAL FOR MENUS ("menu"):** 
-         - You MUST extract AND analyze **EVERY SINGLE ITEM** with a visible price.
-         - **DO NOT ignore text-only items.** Scan the **ENTIRE** image (Cocktails, Beers, Soft Drinks, Wines).
-         - If a wine has MULTIPLE volumes (e.g. Glass/Bottle, 300ml/720ml), create a SEPARATE item for EACH pair.
-           - Name format: "Name (Volume)" e.g. "Dassai 45 (300ml)".
+         - Extract items from ALL images.
+         - **Deduplicate** if the same item appears in overlapping photos.
+         - **EVERY SINGLE ITEM** with a price must be extracted.
+         - **DO NOT ignore text-only items.**
+         - Determine the final list of unique wine/beverage items.
 
       3. **CRITICAL FOR BOTTLES ("single"):**
-         - **menuPrice MUST BE NULL.** Do not invent a menu price.
-         - Estimate the online retail price (JD/Taobao).
+         - Identify ALL unique bottles across all photos.
+         - **menuPrice MUST BE NULL.**
+         - Estimate the online retail price for each.
       
       4. **GENERAL ANALYSIS:**
          - Estimate China online retail price (JD/Taobao).
@@ -146,8 +151,17 @@ export async function analyzeWineList(imageUri: string): Promise<AnalysisResult>
 
         console.log("🚀 Sending to AI (Yinli/OpenAI Proxy)...");
 
+        // Prepare content array with text prompt + all images
+        const contentMessage = [
+            { type: "text", text: PROMPT },
+            ...base64List.map(b64 => ({
+                type: "image_url",
+                image_url: { url: `data:image/jpeg;base64,${b64}` }
+            }))
+        ];
+
         if (API_KEY.startsWith('sk-')) {
-            const TARGET_MODEL = "gemini-3-flash-preview"; // 用户指定版本 (User specified)
+            const TARGET_MODEL = "gemini-3-flash-preview";
             console.log(`🔗 Using Model: ${TARGET_MODEL}`);
 
             const response = await fetch(`${BASE_URL}/chat/completions`, {
@@ -157,20 +171,14 @@ export async function analyzeWineList(imageUri: string): Promise<AnalysisResult>
                     'Authorization': `Bearer ${API_KEY}`
                 },
                 body: JSON.stringify({
-                    model: TARGET_MODEL, // Switch to 2.0 Flash Exp for better instruction following potentially
+                    model: TARGET_MODEL,
                     messages: [
                         {
                             role: "user",
-                            content: [
-                                { type: "text", text: PROMPT },
-                                {
-                                    type: "image_url",
-                                    image_url: { url: `data:image/jpeg;base64,${base64}` }
-                                }
-                            ]
+                            content: contentMessage
                         }
                     ],
-                    max_tokens: 8192 // Increase token limit
+                    max_tokens: 8192
                 })
             });
 
@@ -186,7 +194,6 @@ export async function analyzeWineList(imageUri: string): Promise<AnalysisResult>
             console.log("📝 Raw AI Output (Head):", cleanText.substring(0, 100));
 
             // 2. Extract JSON block more aggressively
-            // Look for the first { and the last }
             const firstOpen = cleanText.indexOf('{');
             const lastClose = cleanText.lastIndexOf('}');
 
@@ -218,12 +225,7 @@ export async function analyzeWineList(imageUri: string): Promise<AnalysisResult>
                     // Replace control characters (newlines/tabs) that might break JSON
                     // But be careful not to break valid spaces.
                     // This regex removes newlines/tabs globally, turning it into a single line.
-                    const aggressiveSafe = jsonString
-                        .replace(/[\r\n\t]+/g, " ")
-                        // Try to fix "Expected ']'" by checking if it ended prematurely
-                        // (Hard to fix programmatically without complex logic)
-                        ;
-
+                    const aggressiveSafe = jsonString.replace(/[\r\n\t]+/g, " ");
                     result = JSON.parse(aggressiveSafe);
                 } catch (e) {
                     console.error("☠️ JSON Parse Fatal:", e);
@@ -239,10 +241,13 @@ export async function analyzeWineList(imageUri: string): Promise<AnalysisResult>
             const genAI = new GoogleGenerativeAI(API_KEY);
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-            const resultResponse = await model.generateContent([
+            // Construct parts for Google SDK
+            const parts = [
                 PROMPT,
-                { inlineData: { data: base64, mimeType: "image/jpeg" } }
-            ]);
+                ...base64List.map(b64 => ({ inlineData: { data: b64, mimeType: "image/jpeg" } }))
+            ];
+
+            const resultResponse = await model.generateContent(parts);
 
             const response = await resultResponse.response;
             const text = response.text().replace(/```json/g, '').replace(/```/g, '').trim();

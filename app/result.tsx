@@ -10,15 +10,31 @@ import { captureRef } from 'react-native-view-shot';
 import { AnalysisResult, analyzeWineList, WineItem } from '../utils/gemini';
 
 export default function ResultScreen() {
-    const { imageUri } = useLocalSearchParams<{ imageUri: string }>();
+    const { imageUri, imageUris } = useLocalSearchParams<{ imageUri?: string; imageUris?: string }>();
     const router = useRouter();
     const [loading, setLoading] = useState(true);
     const [result, setResult] = useState<AnalysisResult | null>(null);
-    const viewShotRef = useRef<View>(null); // Ref for the visual area to capture
+    const viewShotRef = useRef<View>(null);
+    const [targetUris, setTargetUris] = useState<string[]>([]);
 
     useEffect(() => {
-        if (imageUri) {
-            analyzeWineList(imageUri)
+        let uris: string[] = [];
+        if (imageUris) {
+            try {
+                uris = JSON.parse(imageUris);
+            } catch (e) {
+                console.error("Failed to parse imageUris", e);
+                // Fallback to treat as single string if not JSON array
+                uris = [imageUris];
+            }
+        } else if (imageUri) {
+            uris = [imageUri];
+        }
+
+        setTargetUris(uris);
+
+        if (uris.length > 0) {
+            analyzeWineList(uris)
                 .then(data => setResult(data))
                 .catch(err => {
                     console.error(err);
@@ -26,12 +42,11 @@ export default function ResultScreen() {
                 })
                 .finally(() => setLoading(false));
         } else {
-            analyzeWineList("").then(data => {
-                setResult(data);
-                setLoading(false);
-            });
+            // Fallback for empty state or error
+            // Maybe redirect back?
+            setLoading(false);
         }
-    }, [imageUri]);
+    }, [imageUri, imageUris]);
 
     const handleShare = async () => {
         if (GlobalShareLock) return;
@@ -42,7 +57,6 @@ export default function ResultScreen() {
             if (Platform.OS === 'web') {
                 const shareText = `🍷 坑了么分析报告\n\n${result?.summary}\n\n(快保存截图分享)`;
                 await Clipboard.setStringAsync(shareText);
-                // Force an alert on Web so user knows something happened
                 alert("已复制文案！\nWeb端请手动截图分享。\n(手机端App可自动生成长图)");
                 return;
             }
@@ -81,7 +95,7 @@ export default function ResultScreen() {
         return { text: '💣 巨坑', color: 'bg-red-500' };
     };
 
-    // Timer state
+    // Timer state ... (Same as before)
     const [seconds, setSeconds] = useState(0);
     const [loadingText, setLoadingText] = useState("正在连接 AI 大脑...");
 
@@ -93,13 +107,13 @@ export default function ResultScreen() {
                 setSeconds(s => s + 0.1);
             }, 100);
 
-            // Randomly update text to make it feel "thinking"
             const messages = [
                 "正在识别酒标...",
                 "正在扫描年份...",
                 "正在全网比价 (淘宝/京东)...",
                 "AI正在组织语言...",
-                "正在计算防坑指数..."
+                "正在计算防坑指数...",
+                "正在分析多张图片..."
             ];
             textTimer = setInterval(() => {
                 setLoadingText(messages[Math.floor(Math.random() * messages.length)]);
@@ -122,6 +136,9 @@ export default function ResultScreen() {
 
                 <Text className="text-white font-bold text-2xl mb-2">{seconds.toFixed(1)}s</Text>
                 <Text className="text-pink-400 font-bold text-lg text-center mb-4">{loadingText}</Text>
+                <Text className="text-gray-400 text-sm mb-4">
+                    正在分析 {targetUris.length} 张图片...
+                </Text>
 
                 <View className="w-full bg-white/10 h-1 rounded-full overflow-hidden">
                     <View className="h-full bg-pink-500 w-1/2" />
@@ -157,32 +174,36 @@ export default function ResultScreen() {
                     </TouchableOpacity>
                 </View>
 
-                {/* 
-                   Wrap the content we want to screenshot in a View that supports ref.
-                   ScrollView usually works with viewShot but sometimes has issues with long content on Android.
-                   For now, we capture the visible ScrollView area.
-                */}
+                {/* Content */}
                 <View
                     ref={viewShotRef}
                     collapsable={false}
-                    className="flex-1 bg-transparent" // Important for capture
+                    className="flex-1 bg-transparent"
                 >
                     <ScrollView
                         className="flex-1 px-4 pt-4"
                         contentContainerStyle={{ paddingBottom: 40 }}
                         showsVerticalScrollIndicator={false}
                     >
+                        {/* Image Carousel (for multiple images) */}
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            className="mb-6 flex-grow-0"
+                            contentContainerStyle={{ paddingHorizontal: 0 }}
+                        >
+                            {targetUris.map((uri, idx) => (
+                                <View key={idx} className="mr-3">
+                                    <Image
+                                        source={{ uri }}
+                                        className="w-32 h-32 rounded-xl border border-white/20"
+                                        resizeMode="cover"
+                                    />
+                                </View>
+                            ))}
+                        </ScrollView>
 
-                        {/* Uploaded Image Thumbnail (Small) */}
-                        <View className="items-center mb-6">
-                            <Image
-                                source={{ uri: imageUri }}
-                                className="w-32 h-32 rounded-xl border border-white/20"
-                                resizeMode="cover"
-                            />
-                        </View>
-
-                        {/* Summary Card */}
+                        {/* Summary Card and Wine List (Rest is same) ... */}
                         <View className="bg-white/10 p-6 rounded-2xl mb-6 border border-pink-500/30 shadow-lg shadow-pink-500/20">
                             <View className="flex-row items-center mb-3">
                                 <Text className="text-2xl mr-2">🤖</Text>
@@ -193,13 +214,11 @@ export default function ResultScreen() {
                             </Text>
                         </View>
 
-                        {/* Wine List */}
                         <View className="space-y-4">
                             {result.items.map((wine, index) => {
                                 const badge = getBadge(wine);
                                 return (
                                     <View key={index} className="bg-white rounded-2xl p-5 shadow-lg">
-                                        {/* Top Row: Name & Price */}
                                         <View className="flex-row justify-between items-start mb-3">
                                             <View className="flex-1 mr-2">
                                                 <Text className="text-black font-extrabold text-xl leading-tight mb-1">{wine.name}</Text>
@@ -210,7 +229,6 @@ export default function ResultScreen() {
                                                     </View>
                                                 </View>
                                             </View>
-
                                             <View className="items-end">
                                                 {wine.menuPrice ? (
                                                     <Text className="text-orange-500 text-3xl font-black tracking-tighter">
@@ -222,14 +240,12 @@ export default function ResultScreen() {
                                             </View>
                                         </View>
 
-                                        {/* Middle: Characteristics */}
                                         <View className="bg-gray-50 rounded-lg p-3 mb-3 border border-gray-100">
                                             <Text className="text-gray-700 text-sm font-medium leading-relaxed">
                                                 🍷 <Text className="font-bold">特色：</Text>{wine.characteristics}
                                             </Text>
                                         </View>
 
-                                        {/* Bottom: Logic & Badge */}
                                         <View className="flex-row justify-between items-center pt-2 border-t border-gray-100">
                                             <View>
                                                 <Text className="text-gray-500 text-xs">
@@ -261,7 +277,6 @@ export default function ResultScreen() {
                             })}
                         </View>
 
-                        {/* Footer branding for screenshot */}
                         <View className="items-center mt-8 opacity-50">
                             <Text className="text-white text-xs tracking-widest uppercase">POWERED BY BRIGHT305</Text>
                         </View>
