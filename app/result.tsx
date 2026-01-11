@@ -2,7 +2,8 @@ import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import { ArrowLeft, Share2, Star } from 'lucide-react-native';
+import * as Speech from 'expo-speech';
+import { ArrowLeft, Share2, Square, Star, Volume2 } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,6 +17,7 @@ export default function ResultScreen() {
     const [result, setResult] = useState<AnalysisResult | null>(null);
     const viewShotRef = useRef<View>(null);
     const [targetUris, setTargetUris] = useState<string[]>([]);
+    const [isSpeaking, setIsSpeaking] = useState(false);
 
     useEffect(() => {
         let uris: string[] = [];
@@ -84,6 +86,31 @@ export default function ResultScreen() {
             GlobalShareLock = false;
         }
     };
+
+    const handleSpeak = async () => {
+        if (isSpeaking) {
+            Speech.stop();
+            setIsSpeaking(false);
+        } else {
+            if (result?.summary) {
+                setIsSpeaking(true);
+                Speech.speak(result.summary, {
+                    language: 'zh',
+                    rate: 1.0,
+                    pitch: 1.0,
+                    onDone: () => setIsSpeaking(false),
+                    onStopped: () => setIsSpeaking(false),
+                });
+            }
+        }
+    };
+
+    // Stop speaking when leaving screen
+    useEffect(() => {
+        return () => {
+            Speech.stop();
+        };
+    }, []);
 
     const getBadge = (item: WineItem) => {
         if (!item.menuPrice || !item.ratio) {
@@ -205,9 +232,21 @@ export default function ResultScreen() {
 
                         {/* Summary Card and Wine List (Rest is same) ... */}
                         <View className="bg-white/10 p-6 rounded-2xl mb-6 border border-pink-500/30 shadow-lg shadow-pink-500/20">
-                            <View className="flex-row items-center mb-3">
-                                <Text className="text-2xl mr-2">🤖</Text>
-                                <Text className="text-pink-400 font-bold text-lg">毒舌点评</Text>
+                            <View className="flex-row items-center justify-between mb-3">
+                                <View className="flex-row items-center">
+                                    <Text className="text-2xl mr-2">🤖</Text>
+                                    <Text className="text-pink-400 font-bold text-lg">毒舌点评</Text>
+                                </View>
+                                <TouchableOpacity
+                                    onPress={handleSpeak}
+                                    className="bg-white/10 p-2 rounded-full active:bg-pink-500/20"
+                                >
+                                    {isSpeaking ? (
+                                        <Square size={20} color="#F472B6" fill="#F472B6" />
+                                    ) : (
+                                        <Volume2 size={20} color="#F472B6" />
+                                    )}
+                                </TouchableOpacity>
                             </View>
                             <Text className="text-white text-lg leading-relaxed font-medium">
                                 {result.summary}
