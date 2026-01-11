@@ -103,23 +103,29 @@ export async function analyzeWineList(imageUri: string): Promise<AnalysisResult>
       Analyze this image (Wine List or Single Bottle).
 
       **Tasks:**
-      1. Identify if it is a "menu" (list of wines) or "single" (one bottle).
-      2. **CRITICAL FOR MENUS:** You MUST extract AND analyze **EVERY SINGLE ITEM** with a price.
-         - **DO NOT ignore text-only items.**
-         - scan the **ENTIRE** image for Cocktails, Beers, Soft Drinks, or Wines listed as text.
-      3. **CRITICAL FOR MULTI-VOLUME ITEMS:** If a single wine has MULTIPLE prices for different volumes (e.g., "Glass/杯", "Bottle/瓶", "300ml", "720ml", "1800ml"):
-         - You MUST create a **SEPARATE** JSON item for **EACH** volume/price pair.
-         - Append the volume to the name (e.g., "Dassai 45 (300ml)", "Dassai 45 (720ml)").
-         - DO NOT combine them into one item.
-      4. For "menu": Identify menu price. Estimate China online retail price (JD/Taobao) *for that specific volume*.
-      5. For "single": Estimate China online retail price.
-      6. Provide tasting notes/characteristics (in Chinese).
-      7. Provide a 1-10 rating.
-      8. Generate a witty, short, savage/funny summary in Chinese.
+      1. **DETECT TYPE:**
+         - If the image contains a list of items with prices (text), treat as "menu".
+         - If the image contains ONLY bottles (e.g. on a table, in hand) and NO price list, treat as "single".
       
-      **Summary Guidelines (CRITICAL):**
-      - Structure the summary to first highlight "💰Best Value" (最值), then "💸Most Expensive" (最贵), and finally "😈Savage Review" (毒舌点评).
-      - Do NOT use actual newlines in the summary text. Use spaces.
+      2. **CRITICAL FOR MENUS ("menu"):** 
+         - You MUST extract AND analyze **EVERY SINGLE ITEM** with a visible price.
+         - **DO NOT ignore text-only items.** Scan the **ENTIRE** image (Cocktails, Beers, Soft Drinks, Wines).
+         - If a wine has MULTIPLE volumes (e.g. Glass/Bottle, 300ml/720ml), create a SEPARATE item for EACH pair.
+           - Name format: "Name (Volume)" e.g. "Dassai 45 (300ml)".
+
+      3. **CRITICAL FOR BOTTLES ("single"):**
+         - **menuPrice MUST BE NULL.** Do not invent a menu price.
+         - Estimate the online retail price (JD/Taobao).
+      
+      4. **GENERAL ANALYSIS:**
+         - Estimate China online retail price (JD/Taobao).
+         - Provide tasting notes/characteristics (in Chinese).
+         - Provide a 1-10 rating.
+         - Generate a witty, short, savage/funny summary in Chinese.
+      
+      **Summary Guidelines:**
+      - Structure: 💰Best Value -> 💸Most Expensive -> 😈Savage Review.
+      - **NO NEWLINES** in the summary string. Use spaces.
 
       **Return JSON ONLY:**
       {
@@ -131,7 +137,7 @@ export async function analyzeWineList(imageUri: string): Promise<AnalysisResult>
             "menuPrice": number | null, 
             "onlinePrice": number | null, 
             "ratio": number | null, 
-            "characteristics": "Chinese description (Taste, Grape, Region)",
+            "characteristics": "Chinese description",
             "rating": number 
           }
         ]
@@ -141,8 +147,7 @@ export async function analyzeWineList(imageUri: string): Promise<AnalysisResult>
         console.log("🚀 Sending to AI (Yinli/OpenAI Proxy)...");
 
         if (API_KEY.startsWith('sk-')) {
-            // Use the newly discovered model
-            const TARGET_MODEL = "gemini-3-flash-preview";
+            const TARGET_MODEL = "gemini-2.0-flash-exp"; // Try a more stable model if available, or stick to flash-preview
             console.log(`🔗 Using Model: ${TARGET_MODEL}`);
 
             const response = await fetch(`${BASE_URL}/chat/completions`, {
@@ -152,7 +157,7 @@ export async function analyzeWineList(imageUri: string): Promise<AnalysisResult>
                     'Authorization': `Bearer ${API_KEY}`
                 },
                 body: JSON.stringify({
-                    model: TARGET_MODEL,
+                    model: TARGET_MODEL, // Switch to 2.0 Flash Exp for better instruction following potentially
                     messages: [
                         {
                             role: "user",
@@ -165,7 +170,7 @@ export async function analyzeWineList(imageUri: string): Promise<AnalysisResult>
                             ]
                         }
                     ],
-                    max_tokens: 4096
+                    max_tokens: 8192 // Increase token limit
                 })
             });
 
@@ -176,34 +181,54 @@ export async function analyzeWineList(imageUri: string): Promise<AnalysisResult>
                 throw new Error(json.error.message || JSON.stringify(json.error));
             }
 
-            // Robust JSON extraction
-            const cleanText = (json.choices?.[0]?.message?.content || "")
-                .replace(/```json/g, '')
-                .replace(/```/g, '')
-                .trim();
+            // 1. Log the raw output for debugging
+            const cleanText = (json.choices?.[0]?.message?.content || "").trim();
+            console.log("📝 Raw AI Output (Head):", cleanText.substring(0, 100));
 
+            // 2. Extract JSON block more aggressively
+            // Look for the first { and the last }
             const firstOpen = cleanText.indexOf('{');
             const lastClose = cleanText.lastIndexOf('}');
 
-            let jsonString = cleanText;
+            let jsonString = "";
             if (firstOpen !== -1 && lastClose !== -1) {
                 jsonString = cleanText.substring(firstOpen, lastClose + 1);
+            } else {
+                throw new Error("No JSON object found in response");
             }
 
-            // Attempt parsing
+            // 3. Attempt Parsing with cleanup
             let result: AnalysisResult;
             try {
+                // Remove Markdown code blocks if they persist inside the block
+                jsonString = jsonString
+                    .replace(/```json/g, "")
+                    .replace(/```/g, "")
+                    // Fix common trailing comma errors: , } -> } and , ] -> ]
+                    .replace(/,\s*}/g, '}')
+                    .replace(/,\s*]/g, ']');
+
+                // Sanitization: Escape unescaped newlines in JSON strings? 
+                // It's tricky without a parser. The "Aggressive Safe" method below is decent.
+
                 result = JSON.parse(jsonString);
             } catch (parseError) {
-                console.warn("JSON Parse Failed, attempting cleanup:", parseError);
-
+                console.warn("⚠️ Initial Parse Failed. Attempting aggressive cleanup...");
                 try {
-                    // NUCLEAR OPTION: Replace ALL structural newlines/tabs with spaces.
-                    // This creates a single-line JSON string which is safe from "newline in string" errors.
-                    const aggressiveSafe = jsonString.replace(/[\r\n\t]+/g, " ");
+                    // Replace control characters (newlines/tabs) that might break JSON
+                    // But be careful not to break valid spaces.
+                    // This regex removes newlines/tabs globally, turning it into a single line.
+                    const aggressiveSafe = jsonString
+                        .replace(/[\r\n\t]+/g, " ")
+                        // Try to fix "Expected ']'" by checking if it ended prematurely
+                        // (Hard to fix programmatically without complex logic)
+                        ;
+
                     result = JSON.parse(aggressiveSafe);
                 } catch (e) {
-                    throw new Error(`JSON Parsing Failed: ${parseError instanceof Error ? parseError.message : String(parseError)}. Try again.`);
+                    console.error("☠️ JSON Parse Fatal:", e);
+                    console.log("Bad JSON String:", jsonString);
+                    throw new Error("无法解析 AI 返回的数据，请重试。");
                 }
             }
 
