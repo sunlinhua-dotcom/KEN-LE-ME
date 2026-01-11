@@ -180,16 +180,16 @@ export default function HomeScreen() {
     const ringOpacity = useSharedValue(0.6);
 
     useEffect(() => {
-        // Breathing effect for the main button
+        // Stronger Breathing effect for the main button
         scale.value = withRepeat(
-            withTiming(1.05, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
+            withTiming(1.15, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
             -1,
             true // reverse
         );
 
         // Ripple/Pulse effect for the ring
         ringScale.value = withRepeat(
-            withTiming(1.6, { duration: 2000, easing: Easing.out(Easing.ease) }),
+            withTiming(1.8, { duration: 2000, easing: Easing.out(Easing.ease) }),
             -1,
             false
         );
@@ -209,12 +209,19 @@ export default function HomeScreen() {
         opacity: ringOpacity.value,
     }));
 
+    const handleCopyWeChat = async () => {
+        await Clipboard.setStringAsync("sunlinhuamj");
+        Alert.alert("已复制", "微信号 sunlinhuamj 已复制到剪贴板");
+    };
+
     return (
         <LinearGradient
-            colors={['#0F0F1A', '#2D1B36', '#0F0F1A']}
+            // 6-Layer Rich Gradient: Deep Dark -> Purple -> Magenta -> Deep Blue -> Dark -> Black
+            colors={['#050510', '#1A0B2E', '#2D0B36', '#4A0E4E', '#160F30', '#000000']}
+            locations={[0, 0.2, 0.4, 0.6, 0.8, 1]}
             className="flex-1"
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+            start={{ x: 0.2, y: 0 }}
+            end={{ x: 0.8, y: 1 }}
         >
             <StatusBar barStyle="light-content" />
             <SafeAreaView className="flex-1 justify-between">
@@ -223,11 +230,9 @@ export default function HomeScreen() {
                 <View className="w-full px-8 pt-4 flex-row justify-between items-center z-10">
                     <View>
                         <Text className="text-white text-4xl font-extrabold tracking-tighter shadow-lg">坑了么</Text>
-                        <Text className="text-pink-400 text-xs tracking-[0.4em] uppercase font-semibold ml-1">Bright Wine</Text>
+                        <Text className="text-pink-500 text-xs tracking-[0.4em] uppercase font-semibold ml-1">Bright Wine</Text>
                     </View>
-                    <View className="w-12 h-12 bg-white/5 rounded-full items-center justify-center border border-white/10 shadow-inner">
-                        <View className="w-3 h-3 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.8)]" />
-                    </View>
+                    {/* Removed Green Button */}
                 </View>
 
                 {/* Main Content Area */}
@@ -250,7 +255,7 @@ export default function HomeScreen() {
                         >
                             <Animated.View
                                 style={[selectedImages.length === 0 ? animatedButtonStyle : {}]}
-                                className="shadow-[0_0_40px_rgba(255,20,147,0.6)] rounded-full"
+                                className="shadow-[0_0_50px_rgba(255,20,147,0.8)] rounded-full"
                             >
                                 <LinearGradient
                                     colors={['#FF1493', '#FF007F']}
@@ -365,9 +370,11 @@ export default function HomeScreen() {
                         <Text className="text-white text-[10px] tracking-[0.2em] uppercase font-bold text-center opacity-40">
                             POWERED BY BRIGHT305
                         </Text>
-                        <Text className="text-gray-500 text-[10px] mt-1 font-medium tracking-widest">
-                            WeChat: sunlinhuamj
-                        </Text>
+                        <TouchableOpacity onPress={handleCopyWeChat} className="mt-1 active:opacity-50">
+                            <Text className="text-gray-500 text-[10px] font-medium tracking-widest">
+                                WeChat: <Text className="underline decoration-gray-500">sunlinhuamj</Text> (点击复制)
+                            </Text>
+                        </TouchableOpacity>
                     </View>
                 )}
 
