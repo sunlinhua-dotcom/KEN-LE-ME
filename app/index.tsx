@@ -1,9 +1,9 @@
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { Camera } from 'lucide-react-native';
+import { Camera, Image as ImageIcon } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { Alert, StatusBar, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -11,32 +11,62 @@ export default function HomeScreen() {
     const router = useRouter();
     const [isLoading, setIsLoading] = useState(false);
 
-    const handleSnap = async () => {
+    const processImage = (result: ImagePicker.ImagePickerResult) => {
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+            router.push({
+                pathname: '/result',
+                params: { imageUri: result.assets[0].uri }
+            });
+        }
+    };
+
+    const takePhoto = async () => {
         try {
             const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
             if (!permissionResult.granted) {
                 Alert.alert("需要权限", "请允许访问相机以进行拍摄");
                 return;
             }
-
             setIsLoading(true);
             const result = await ImagePicker.launchCameraAsync({
                 mediaTypes: ImagePicker.MediaTypeOptions.Images,
                 allowsEditing: false,
                 quality: 0.8,
             });
-
-            if (!result.canceled && result.assets && result.assets.length > 0) {
-                router.push({
-                    pathname: '/result',
-                    params: { imageUri: result.assets[0].uri }
-                });
-            }
+            processImage(result);
         } catch (error) {
             console.error("Camera Error:", error);
             Alert.alert("错误", "无法启动相机");
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const pickImage = async () => {
+        try {
+            setIsLoading(true);
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: false,
+                quality: 0.8,
+            });
+            processImage(result);
+        } catch (error) {
+            console.error("Gallery Error:", error);
+            Alert.alert("错误", "无法打开相册");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleMainButtonPress = () => {
+        if (Platform.OS === 'web') {
+            // On Web, launchImageLibraryAsync acts as the native file picker (Camera + Gallery)
+            // This is the CICO behavior the user requested.
+            pickImage();
+        } else {
+            // On Native, stick to Camera for big button, user uses secondary button for Gallery
+            takePhoto();
         }
     };
 
@@ -106,9 +136,10 @@ export default function HomeScreen() {
 
                         {/* Breathing Button */}
                         <TouchableOpacity
-                            onPress={handleSnap}
+                            onPress={handleMainButtonPress}
                             activeOpacity={0.9}
                             className="z-10"
+                            disabled={isLoading}
                         >
                             <Animated.View
                                 style={[animatedButtonStyle]}
@@ -118,15 +149,30 @@ export default function HomeScreen() {
                                     colors={['#FF1493', '#FF007F']} // Bright Pink Gradient
                                     className="w-56 h-56 rounded-full items-center justify-center border-4 border-white/20"
                                 >
-                                    <Camera color="white" size={88} strokeWidth={1.5} />
+                                    {isLoading ? (
+                                        <ActivityIndicator color="white" size="large" />
+                                    ) : (
+                                        <Camera color="white" size={88} strokeWidth={1.5} />
+                                    )}
                                 </LinearGradient>
                             </Animated.View>
                         </TouchableOpacity>
                     </View>
 
-                    <Text className="text-white mt-16 text-xl font-medium tracking-wide opacity-90 shadow-sm">
+                    <Text className="text-white mt-10 text-xl font-medium tracking-wide opacity-90 shadow-sm">
                         拍酒单，看看那个<Text className="text-pink-500 font-bold text-2xl">坑</Text>
                     </Text>
+
+                    {/* Secondary Gallery Button - Distinct from Main Action */}
+                    <TouchableOpacity
+                        onPress={pickImage}
+                        className="mt-8 flex-row items-center bg-white/10 px-6 py-3 rounded-full border border-white/20 active:bg-white/20"
+                    >
+                        <ImageIcon color="#E879F9" size={20} />
+                        <Text className="text-pink-300 ml-2 font-bold text-sm tracking-widest">
+                            从相册选择
+                        </Text>
+                    </TouchableOpacity>
                 </View>
 
                 {/* Footer */}
