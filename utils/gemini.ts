@@ -147,7 +147,7 @@ export async function analyzeWineList(imageUri: string): Promise<AnalysisResult>
         console.log("🚀 Sending to AI (Yinli/OpenAI Proxy)...");
 
         if (API_KEY.startsWith('sk-')) {
-            const TARGET_MODEL = "gemini-1.5-pro-latest"; // Revert to stable Pro model for best result
+            const TARGET_MODEL = "gemini-3-flash-preview"; // 用户指定版本 (User specified)
             console.log(`🔗 Using Model: ${TARGET_MODEL}`);
 
             const response = await fetch(`${BASE_URL}/chat/completions`, {
