@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import * as FileSystem from 'expo-file-system';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { Platform } from 'react-native';
 
 const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
@@ -65,26 +66,34 @@ export async function analyzeWineList(imageUri: string): Promise<AnalysisResult>
     try {
         let base64 = "";
 
-        // --- 1. Image Processing ---
-        if (Platform.OS === 'web') {
-            console.log("🌐 Processing image for Web...");
-            const response = await fetch(imageUri);
-            const blob = await response.blob();
-            base64 = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    if (typeof reader.result === 'string') {
-                        resolve(reader.result.split(',')[1]);
-                    } else {
-                        reject(new Error("Failed to convert image to base64"));
-                    }
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
+        console.log("✂️ Compressing/Resizing Image...");
+        // Compress and Resize locally to speed up upload & processing
+        const manipResult = await ImageManipulator.manipulateAsync(
+            imageUri,
+            [{ resize: { width: 1024 } }], // Resize width to 1024px
+            { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true } // Compress to 60% quality
+        );
+
+        if (manipResult.base64) {
+            base64 = manipResult.base64;
+            console.log("✅ Image compressed successfully.");
         } else {
-            console.log("📱 Processing image for Native...");
-            base64 = await FileSystem.readAsStringAsync(imageUri, { encoding: 'base64' });
+            // Fallback
+            console.warn("⚠️ Manipulator didn't return base64, reading from file...");
+            if (Platform.OS === 'web') {
+                const response = await fetch(manipResult.uri);
+                const blob = await response.blob();
+                base64 = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        if (typeof reader.result === 'string') resolve(reader.result.split(',')[1]);
+                        else reject(new Error("Failed to convert image"));
+                    };
+                    reader.readAsDataURL(blob);
+                });
+            } else {
+                base64 = await FileSystem.readAsStringAsync(manipResult.uri, { encoding: 'base64' });
+            }
         }
 
         if (!base64) throw new Error("Failed to process image data");
@@ -95,12 +104,18 @@ export async function analyzeWineList(imageUri: string): Promise<AnalysisResult>
 
       **Tasks:**
       1. Identify if it is a "menu" (list of wines) or "single" (one bottle).
-      2. **CRITICAL FOR MENUS:** You MUST extract AND analyze MULTIPLE wines if visible. Do not just pick one. Create a separate item for EVERY distinct wine found.
-      3. For "menu": Identify menu price (look for numbers near the wine). Estimate China online retail price (JD/Taobao).
-      4. For "single": Estimate China online retail price.
-      5. Provide tasting notes/characteristics (in Chinese) for EACH item.
-      6. Provide a 1-10 rating (quality/reputation).
-      7. Generate a witty, short, savage/funny summary in Chinese about the overall selection.
+      2. **CRITICAL FOR MENUS:** You MUST extract AND analyze **EVERY SINGLE ITEM** with a price.
+         - **DO NOT ignore text-only items.**
+         - scan the **ENTIRE** image for Cocktails, Beers, Soft Drinks, or Wines listed as text.
+      3. **CRITICAL FOR MULTI-VOLUME ITEMS:** If a single wine has MULTIPLE prices for different volumes (e.g., "Glass/杯", "Bottle/瓶", "300ml", "720ml", "1800ml"):
+         - You MUST create a **SEPARATE** JSON item for **EACH** volume/price pair.
+         - Append the volume to the name (e.g., "Dassai 45 (300ml)", "Dassai 45 (720ml)").
+         - DO NOT combine them into one item.
+      4. For "menu": Identify menu price. Estimate China online retail price (JD/Taobao) *for that specific volume*.
+      5. For "single": Estimate China online retail price.
+      6. Provide tasting notes/characteristics (in Chinese).
+      7. Provide a 1-10 rating.
+      8. Generate a witty, short, savage/funny summary in Chinese.
       
       **Summary Guidelines (CRITICAL):**
       - Structure the summary to first highlight "💰Best Value" (最值), then "💸Most Expensive" (最贵), and finally "😈Savage Review" (毒舌点评).

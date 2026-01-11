@@ -101,6 +101,7 @@ export default function CameraScreen() {
                 style={{ flex: 1 }}
                 facing={facing}
                 ref={cameraRef}
+                mode="picture"
             >
                 <SafeAreaView className="flex-1 justify-between">
                     {/* Top Bar */}

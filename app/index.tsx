@@ -1,16 +1,43 @@
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Camera } from 'lucide-react-native';
-import { useEffect } from 'react';
-import { StatusBar, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function HomeScreen() {
     const router = useRouter();
+    const [isLoading, setIsLoading] = useState(false);
 
-    const handleSnap = () => {
-        router.push('/camera');
+    const handleSnap = async () => {
+        try {
+            const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+            if (!permissionResult.granted) {
+                Alert.alert("需要权限", "请允许访问相机以进行拍摄");
+                return;
+            }
+
+            setIsLoading(true);
+            const result = await ImagePicker.launchCameraAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: false,
+                quality: 0.8,
+            });
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                router.push({
+                    pathname: '/result',
+                    params: { imageUri: result.assets[0].uri }
+                });
+            }
+        } catch (error) {
+            console.error("Camera Error:", error);
+            Alert.alert("错误", "无法启动相机");
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     // Animation Shared Values
