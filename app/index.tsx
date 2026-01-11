@@ -35,14 +35,76 @@ export default function HomeScreen() {
         }, 500);
     };
 
-    const takePhoto = async () => {
+    // Web-specific file handler to bypass Expo ImagePicker issues on Android/ColorOS
+    const handleWebUpload = (mode: 'camera' | 'gallery') => {
         try {
-            if (Platform.OS !== 'web') {
-                const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-                if (!permissionResult.granted) {
-                    Alert.alert("需要权限", "请允许访问相机以进行拍摄");
-                    return;
+            // Create hidden input
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+
+            if (mode === 'camera') {
+                // Force rear camera for "Take Photo" action
+                input.capture = 'environment';
+            } else {
+                // Allow multiple for gallery
+                input.multiple = true;
+            }
+
+            // Listen for selection
+            input.onchange = (event: any) => {
+                const files = event.target.files;
+                if (files && files.length > 0) {
+                    // Show processing state ONLY when we actually have files
+                    setIsLoading(true);
+                    setLoadingMessage("正在处理图片...");
+
+                    // Create object URLs
+                    const newUris = Array.from(files).map((file: any) => URL.createObjectURL(file));
+
+                    // Simulate the delay/processing expo usually does
+                    setTimeout(() => {
+                        setSelectedImages(prev => [...prev, ...newUris]);
+                        setIsLoading(false);
+                    }, 500);
                 }
+            };
+
+            // Trigger click
+            // We set a short timeout for the loading state to ensure it renders before the blocking click
+            setIsLoading(true);
+            setLoadingMessage(mode === 'camera' ? "正在启动相机..." : "正在打开相册...");
+
+            setTimeout(() => {
+                input.click();
+
+                // Auto-dismiss loading state after 2.5s
+                // This prevents "Infinite Loading" if user hits Cancel in the file picker
+                // (Browser does not trigger any event on cancel)
+                setTimeout(() => {
+                    setIsLoading(false);
+                    setLoadingMessage("");
+                }, 2500);
+            }, 100);
+
+        } catch (e) {
+            console.error(e);
+            Alert.alert("错误", "无法调起系统选择器");
+            setIsLoading(false);
+        }
+    };
+
+    const takePhoto = async () => {
+        if (Platform.OS === 'web') {
+            handleWebUpload('camera');
+            return;
+        }
+
+        try {
+            const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+            if (!permissionResult.granted) {
+                Alert.alert("需要权限", "请允许访问相机以进行拍摄");
+                return;
             }
 
             setIsLoading(true);
@@ -64,6 +126,11 @@ export default function HomeScreen() {
     };
 
     const pickImage = async () => {
+        if (Platform.OS === 'web') {
+            handleWebUpload('gallery');
+            return;
+        }
+
         try {
             setIsLoading(true);
             setLoadingMessage("正在加载相册...");
@@ -104,9 +171,6 @@ export default function HomeScreen() {
     };
 
     const handleMainButtonPress = () => {
-        // Always invoke Camera for the main button, even on Web
-        // This solves the issue where specific Android devices (OnePlus)
-        // don't show the "Camera" option in the File Picker.
         takePhoto();
     };
 
