@@ -4,7 +4,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { Platform } from 'react-native';
 
 const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
-const BASE_URL = process.env.EXPO_PUBLIC_GEMINI_BASE_URL || "https://api.openai.com/v1";
+const BASE_URL = process.env.EXPO_PUBLIC_GEMINI_BASE_URL || "https://api.apiyi.com/v1beta";
 
 export interface WineItem {
     name: string;
@@ -161,7 +161,7 @@ export async function analyzeWineList(imageUris: string[]): Promise<AnalysisResu
         ];
 
         if (API_KEY.startsWith('sk-')) {
-            const TARGET_MODEL = "gpt-4o-mini";
+            const TARGET_MODEL = "gemini-3-flash-preview";
             console.log(`🔗 Using Model: ${TARGET_MODEL}`);
 
             const response = await fetch(`${BASE_URL}/chat/completions`, {
