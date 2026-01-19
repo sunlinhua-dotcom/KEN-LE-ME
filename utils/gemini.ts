@@ -161,7 +161,7 @@ export async function analyzeWineList(imageUris: string[]): Promise<AnalysisResu
         ];
 
         if (API_KEY.startsWith('sk-')) {
-            const TARGET_MODEL = "gemini-3-flash-preview";
+            const TARGET_MODEL = "gpt-4o-mini";
             console.log(`🔗 Using Model: ${TARGET_MODEL}`);
 
             const response = await fetch(`${BASE_URL}/chat/completions`, {
