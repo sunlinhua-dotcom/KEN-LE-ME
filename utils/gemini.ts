@@ -4,7 +4,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { Platform } from 'react-native';
 
 const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
-const BASE_URL = process.env.EXPO_PUBLIC_GEMINI_BASE_URL || "https://api.apiyi.com/v1beta";
+const BASE_URL = process.env.EXPO_PUBLIC_GEMINI_BASE_URL || "https://api.apiyi.com/v1";
 
 export interface WineItem {
     name: string;
