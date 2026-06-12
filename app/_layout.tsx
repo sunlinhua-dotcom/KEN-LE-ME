@@ -5,12 +5,12 @@ import "../global.css";
 
 export default function Layout() {
   return (
-    <View style={{ flex: 1, backgroundColor: '#0F0F1A' }}>
+    <View style={{ flex: 1, backgroundColor: '#060410' }}>
       <Head>
         <title>坑了么 | 葡萄酒避坑指南</title>
         <meta name="apple-mobile-web-app-title" content="坑了么" />
         <meta name="application-name" content="坑了么" />
-        <meta name="theme-color" content="#0F0F1A" />
+        <meta name="theme-color" content="#060410" />
 
         {/* PWA Icons - served from public/ folder */}
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

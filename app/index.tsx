@@ -1,12 +1,20 @@
+import Logo from '@/components/svg/Logo';
+import Reveal from '@/components/anim/Reveal';
+import WineUniverse from '@/components/three/WineUniverse';
+import { KC } from '@/constants/theme';
 import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { ArrowRight, Camera, Image as ImageIcon, Plus, X } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Platform, ScrollView, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Circle } from 'react-native-svg';
+
+const CAPABILITIES = ['红酒', '雪茄', '酒单', '菜单', '小票', '外卖截图'];
 
 export default function HomeScreen() {
     const router = useRouter();
@@ -14,16 +22,29 @@ export default function HomeScreen() {
     const [loadingMessage, setLoadingMessage] = useState("");
     const [selectedImages, setSelectedImages] = useState<string[]>([]);
 
+    // 3D 场景默认渲染;仅在页面失焦(被结果页覆盖)时暂停省电
+    const [scenePaused, setScenePaused] = useState(false);
+    useFocusEffect(useCallback(() => {
+        setScenePaused(false);
+        return () => setScenePaused(true);
+    }, []));
+
+    const buzz = () => {
+        if (Platform.OS !== 'web') {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
+        }
+    };
+
     const processImage = (result: ImagePicker.ImagePickerResult) => {
         if (!result.canceled && result.assets && result.assets.length > 0) {
             const newUris = result.assets.map(asset => asset.uri);
-            // Append new images to the list
             setSelectedImages(prev => [...prev, ...newUris]);
         }
     };
 
     const handleAnalyze = () => {
         if (selectedImages.length === 0) return;
+        buzz();
 
         router.push({
             pathname: '/result',
@@ -39,49 +60,41 @@ export default function HomeScreen() {
     // Web-specific file handler to bypass Expo ImagePicker issues on Android/ColorOS
     const handleWebUpload = (mode: 'camera' | 'gallery') => {
         try {
-            // Create hidden input
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = 'image/*';
+            // 挂到 DOM:部分微信 / 老 iOS WebView 会忽略游离 input 的 click
+            input.style.cssText = 'position:fixed;top:-100px;left:-100px;width:1px;height:1px;opacity:0;';
+            document.body.appendChild(input);
 
             if (mode === 'camera') {
-                // Force rear camera for "Take Photo" action
                 input.capture = 'environment';
             } else {
-                // Allow multiple for gallery
                 input.multiple = true;
             }
 
-            // Listen for selection
             input.onchange = (event: any) => {
                 const files = event.target.files;
                 if (files && files.length > 0) {
-                    // Show processing state ONLY when we actually have files
                     setIsLoading(true);
                     setLoadingMessage("正在处理图片...");
 
-                    // Create object URLs
                     const newUris = Array.from(files).map((file: any) => URL.createObjectURL(file));
 
-                    // Simulate the delay/processing expo usually does
                     setTimeout(() => {
                         setSelectedImages(prev => [...prev, ...newUris]);
                         setIsLoading(false);
                     }, 500);
                 }
+                input.remove();
             };
 
-            // Trigger click
-            // We set a short timeout for the loading state to ensure it renders before the blocking click
             setIsLoading(true);
             setLoadingMessage(mode === 'camera' ? "正在启动相机..." : "正在打开相册...");
 
             setTimeout(() => {
                 input.click();
-
-                // Auto-dismiss loading state after 2.5s
-                // This prevents "Infinite Loading" if user hits Cancel in the file picker
-                // (Browser does not trigger any event on cancel)
+                // 浏览器取消选择不会触发事件,2.5s 后自动收起加载层
                 setTimeout(() => {
                     setIsLoading(false);
                     setLoadingMessage("");
@@ -96,6 +109,7 @@ export default function HomeScreen() {
     };
 
     const takePhoto = async () => {
+        buzz();
         if (Platform.OS === 'web') {
             handleWebUpload('camera');
             return;
@@ -127,6 +141,7 @@ export default function HomeScreen() {
     };
 
     const pickImage = async () => {
+        buzz();
         if (Platform.OS === 'web') {
             handleWebUpload('gallery');
             return;
@@ -136,7 +151,6 @@ export default function HomeScreen() {
             setIsLoading(true);
             setLoadingMessage("正在加载相册...");
 
-            // Allow UI to update before bridge call
             await new Promise(resolve => setTimeout(resolve, 50));
 
             const result = await ImagePicker.launchImageLibraryAsync({
@@ -153,16 +167,16 @@ export default function HomeScreen() {
             }
         } catch (error) {
             console.error("Gallery Error:", error);
-            // Fallback for some Androids that fail with multiple selection
+            // 部分 Android 多选会失败,降级单选
             try {
                 const result = await ImagePicker.launchImageLibraryAsync({
                     mediaTypes: ImagePicker.MediaTypeOptions.Images,
                     allowsEditing: false,
                     quality: 0.8,
-                    allowsMultipleSelection: false // Fallback to single
+                    allowsMultipleSelection: false
                 });
                 if (!result.canceled) processImage(result);
-            } catch (e) {
+            } catch {
                 Alert.alert("错误", "无法打开相册");
             }
         } finally {
@@ -171,43 +185,29 @@ export default function HomeScreen() {
         }
     };
 
-    const handleMainButtonPress = () => {
-        takePhoto();
-    };
-
-    // Animation Shared Values
-    const scale = useSharedValue(1);
+    // ── CTA 动效:脉冲环 + 金色刻度环旋转 ──
     const ringScale = useSharedValue(1);
-    const ringOpacity = useSharedValue(0.6);
+    const ringOpacity = useSharedValue(0.5);
+    const dialSpin = useSharedValue(0);
 
     useEffect(() => {
-        // Stronger Breathing effect for the main button
-        scale.value = withRepeat(
-            withTiming(1.15, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
-            -1,
-            true // reverse
-        );
-
-        // Ripple/Pulse effect for the ring
         ringScale.value = withRepeat(
-            withTiming(1.8, { duration: 2000, easing: Easing.out(Easing.ease) }),
-            -1,
-            false
+            withTiming(1.9, { duration: 2400, easing: Easing.out(Easing.ease) }), -1, false
         );
         ringOpacity.value = withRepeat(
-            withTiming(0, { duration: 2000, easing: Easing.out(Easing.ease) }),
-            -1,
-            false
+            withTiming(0, { duration: 2400, easing: Easing.out(Easing.ease) }), -1, false
         );
-    }, []);
+        dialSpin.value = withRepeat(
+            withTiming(360, { duration: 26000, easing: Easing.linear }), -1, false
+        );
+    }, [ringScale, ringOpacity, dialSpin]);
 
-    const animatedButtonStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }]
-    }));
-
-    const animatedRingStyle = useAnimatedStyle(() => ({
+    const pulseStyle = useAnimatedStyle(() => ({
         transform: [{ scale: ringScale.value }],
         opacity: ringOpacity.value,
+    }));
+    const dialStyle = useAnimatedStyle(() => ({
+        transform: [{ rotate: `${dialSpin.value}deg` }],
     }));
 
     const handleCopyWeChat = async () => {
@@ -215,171 +215,224 @@ export default function HomeScreen() {
         Alert.alert("已复制", "微信号 sunlinhuamj 已复制到剪贴板");
     };
 
+    const hasImages = selectedImages.length > 0;
+
     return (
-        <LinearGradient
-            // 6-Layer Rich Gradient: Deep Dark -> Purple -> Magenta -> Deep Blue -> Dark -> Black
-            colors={['#050510', '#1A0B2E', '#2D0B36', '#4A0E4E', '#160F30', '#000000']}
-            locations={[0, 0.2, 0.4, 0.6, 0.8, 1]}
-            className="flex-1"
-            start={{ x: 0.2, y: 0 }}
-            end={{ x: 0.8, y: 1 }}
-        >
+        <View className="flex-1 bg-void">
             <StatusBar barStyle="light-content" />
-            <SafeAreaView className="flex-1 justify-between">
 
-                {/* Header */}
-                <View className="w-full px-8 pt-4 flex-row justify-between items-center z-10">
-                    <View>
-                        <Text className="text-white text-4xl font-extrabold tracking-tighter shadow-lg">坑了么</Text>
-                        <Text className="text-pink-500 text-xs tracking-[0.4em] uppercase font-semibold ml-1">Bright Wine</Text>
-                    </View>
-                    {/* Removed Green Button */}
-                </View>
+            {/* ── Three.js 酒杯宇宙(web)/ 辉光星空(native) ── */}
+            <WineUniverse paused={scenePaused} />
 
-                {/* Main Content Area */}
-                <View className="flex-1 items-center justify-center">
+            {/* 底部可读性渐变 */}
+            <LinearGradient
+                colors={['rgba(6,4,16,0)', 'rgba(6,4,16,0.55)', 'rgba(6,4,16,0.92)']}
+                locations={[0.35, 0.7, 1]}
+                pointerEvents="none"
+                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            />
 
-                    {/* Main Camera Button */}
-                    <View className="relative items-center justify-center">
-                        {selectedImages.length === 0 && (
-                            <Animated.View
-                                className="absolute w-56 h-56 rounded-full bg-pink-500"
-                                style={animatedRingStyle}
-                            />
-                        )}
-
-                        <TouchableOpacity
-                            onPress={handleMainButtonPress}
-                            activeOpacity={0.9}
-                            className="z-10"
-                            disabled={isLoading}
-                        >
-                            <Animated.View
-                                style={[selectedImages.length === 0 ? animatedButtonStyle : {}]}
-                                className="shadow-[0_0_50px_rgba(255,20,147,0.8)] rounded-full"
-                            >
-                                <LinearGradient
-                                    colors={['#FF1493', '#FF007F']}
-                                    className={`${selectedImages.length > 0 ? "w-40 h-40" : "w-56 h-56"} rounded-full items-center justify-center border-4 border-white/20 transition-all`}
-                                >
-                                    {isLoading ? (
-                                        <ActivityIndicator color="white" size="large" />
-                                    ) : (
-                                        <Camera color="white" size={selectedImages.length > 0 ? 60 : 88} strokeWidth={1.5} />
-                                    )}
-                                </LinearGradient>
-                            </Animated.View>
-                        </TouchableOpacity>
-                    </View>
-
-                    {selectedImages.length === 0 ? (
-                        <View className="items-center mt-10 space-y-3">
-                            <Text className="text-white text-xl font-medium tracking-wide opacity-90 shadow-sm text-center">
-                                拍酒单，看看那个<Text className="text-pink-500 font-bold text-2xl"> 坑</Text>
-                            </Text>
-                            <Text className="text-gray-400 text-xs font-medium tracking-wider text-center max-w-[80%] leading-5">
-                                可鉴别：红酒 / 雪茄 / 酒单 / 菜单 / 消费小票 / 外卖平台截图
+            <SafeAreaView className="flex-1">
+                {/* ── 品牌头部 ── */}
+                <Reveal dy={-12} className="w-full px-6 pt-3 flex-row justify-between items-center z-10">
+                    <View className="flex-row items-center">
+                        <Logo size={46} />
+                        <View className="ml-3">
+                            <Text className="text-white text-3xl font-black tracking-tight" style={{ color: KC.textHi }}>坑了么</Text>
+                            <Text style={{ color: KC.gold }} className="text-[9px] tracking-[0.35em] font-bold mt-0.5">
+                                WINE GUARD · 避坑指南
                             </Text>
                         </View>
-                    ) : (
-                        <Text className="text-white/60 mt-6 text-sm">
-                            点击上图继续添加，或下方开始分析
-                        </Text>
-                    )}
+                    </View>
+                    <View className="px-3 py-1.5 rounded-full border" style={{ borderColor: 'rgba(232,194,104,0.35)', backgroundColor: 'rgba(232,194,104,0.08)' }}>
+                        <Text style={{ color: KC.goldSoft }} className="text-[10px] font-bold tracking-widest">AI 鉴定</Text>
+                    </View>
+                </Reveal>
 
-                    {/* Secondary Button */}
-                    {selectedImages.length === 0 && (
-                        <TouchableOpacity
-                            onPress={pickImage}
-                            className="mt-8 flex-row items-center bg-white/10 px-6 py-3 rounded-full border border-white/20 active:bg-white/20"
-                        >
-                            <ImageIcon color="#E879F9" size={20} />
-                            <Text className="text-pink-300 ml-2 font-bold text-sm tracking-widest">
-                                从相册选择 (多选)
-                            </Text>
-                        </TouchableOpacity>
-                    )}
-                </View>
+                {/* ── 主舞台 ── */}
+                <View className="flex-1 z-10">
+                    {/* 3D 酒杯展示区(留白,让杯子呼吸) */}
+                    <View style={hasImages ? { height: 36 } : { height: '30%' }} />
 
-                {/* Bottom Area: Image List & Action Panel */}
-                {selectedImages.length > 0 && (
-                    <View className="w-full bg-black/40 rounded-t-3xl border-t border-white/10 p-6 pb-8 backdrop-blur-md">
+                    {/* 文案 + CTA */}
+                    <View className="items-center px-8 pb-2">
+                        {!hasImages && (
+                            <Reveal delay={150} className="items-center mb-5">
+                                <Text className="text-center" style={{ color: KC.textHi, fontSize: 28, fontWeight: '900', letterSpacing: 1 }}>
+                                    这杯酒,<Text style={{ color: KC.crimson }}>坑</Text>不坑?
+                                </Text>
+                                <Text className="text-center mt-2.5 text-[13px] leading-5" style={{ color: KC.textMid, maxWidth: 260 }}>
+                                    拍下酒单,AI 一秒看穿溢价,毒舌点评帮你避坑
+                                </Text>
+                            </Reveal>
+                        )}
 
-                        <View className="flex-row justify-between items-center mb-4">
-                            <Text className="text-white font-bold text-lg">
-                                待分析 <Text className="text-pink-500">({selectedImages.length})</Text>
-                            </Text>
-                            <TouchableOpacity onPress={() => setSelectedImages([])}>
-                                <Text className="text-gray-400 text-xs">清空</Text>
+                        {/* ── 主 CTA:雷达拍摄按钮 ── */}
+                        <View className="items-center justify-center" style={{ height: hasImages ? 150 : 192 }}>
+                            {/* 扩散脉冲 */}
+                            {!hasImages && (
+                                <Animated.View
+                                    style={[pulseStyle, { position: 'absolute', width: 164, height: 164, borderRadius: 100, borderWidth: 1.5, borderColor: KC.crimson }]}
+                                />
+                            )}
+                            {/* 旋转金色刻度环 */}
+                            <Animated.View style={[dialStyle, { position: 'absolute' }]} pointerEvents="none">
+                                <Svg width={hasImages ? 152 : 186} height={hasImages ? 152 : 186} viewBox="0 0 200 200">
+                                    <Circle cx="100" cy="100" r="96" stroke={KC.gold} strokeWidth="1.6" strokeDasharray="10 14" strokeLinecap="round" fill="none" opacity={0.7} />
+                                </Svg>
+                            </Animated.View>
+
+                            <TouchableOpacity onPress={takePhoto} activeOpacity={0.85} disabled={isLoading}>
+                                <View style={{
+                                    shadowColor: KC.crimson, shadowOpacity: 0.75, shadowRadius: 36, shadowOffset: { width: 0, height: 0 },
+                                    borderRadius: 999, elevation: 18,
+                                }}>
+                                    <LinearGradient
+                                        colors={['#FF5A9C', '#FF2E7E', '#C2125C']}
+                                        start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
+                                        style={{
+                                            width: hasImages ? 118 : 158, height: hasImages ? 118 : 158, borderRadius: 999,
+                                            alignItems: 'center', justifyContent: 'center',
+                                            borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.32)',
+                                        }}
+                                    >
+                                        {isLoading ? (
+                                            <ActivityIndicator color="white" size="large" />
+                                        ) : (
+                                            <>
+                                                <Camera color="white" size={hasImages ? 42 : 56} strokeWidth={1.6} />
+                                                <Text className="text-white font-black tracking-[0.3em] mt-1.5" style={{ fontSize: hasImages ? 12 : 14, marginLeft: 4 }}>
+                                                    拍酒单
+                                                </Text>
+                                            </>
+                                        )}
+                                    </LinearGradient>
+                                </View>
                             </TouchableOpacity>
                         </View>
 
-                        <ScrollView
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            className="mb-6"
-                        >
+                        {hasImages ? (
+                            <Text className="mt-1 text-xs" style={{ color: KC.textLow }}>
+                                点击上方继续拍摄,或在下方开始鉴定
+                            </Text>
+                        ) : (
+                            <>
+                                {/* 相册多选 */}
+                                <Reveal delay={300}>
+                                    <TouchableOpacity
+                                        onPress={pickImage}
+                                        className="mt-4 flex-row items-center px-6 py-3 rounded-full border"
+                                        style={{ backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.16)' }}
+                                    >
+                                        <ImageIcon color={KC.goldSoft} size={18} />
+                                        <Text style={{ color: KC.goldSoft }} className="ml-2 font-bold text-[13px] tracking-[0.2em]">
+                                            从相册选择 · 可多张
+                                        </Text>
+                                    </TouchableOpacity>
+                                </Reveal>
+
+                                {/* 能力胶囊 */}
+                                <Reveal delay={450} className="flex-row flex-wrap justify-center mt-5" style={{ maxWidth: 320 }}>
+                                    {CAPABILITIES.map((c) => (
+                                        <View
+                                            key={c}
+                                            className="px-3 py-1.5 m-1 rounded-full border"
+                                            style={{ borderColor: 'rgba(255,255,255,0.12)', backgroundColor: 'rgba(255,255,255,0.045)' }}
+                                        >
+                                            <Text className="text-[11px] font-medium" style={{ color: KC.textMid }}>{c}</Text>
+                                        </View>
+                                    ))}
+                                </Reveal>
+                            </>
+                        )}
+                    </View>
+
+                    {!hasImages && <View className="flex-1" />}
+                </View>
+
+                {/* ── 待鉴定图片托盘 ── */}
+                {hasImages && (
+                    <Reveal dy={60} duration={450}
+                        className="w-full rounded-t-[28px] border-t px-6 pt-5 pb-7 z-20"
+                        style={{ backgroundColor: 'rgba(10,6,20,0.88)', borderColor: 'rgba(232,194,104,0.22)' }}
+                    >
+                        <View className="flex-row justify-between items-center mb-4">
+                            <View className="flex-row items-baseline">
+                                <Text className="font-black text-lg" style={{ color: KC.textHi }}>待鉴定</Text>
+                                <Text className="ml-2 font-black text-lg" style={{ color: KC.crimson }}>{selectedImages.length} 张</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setSelectedImages([])} className="px-3 py-1.5 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.07)' }}>
+                                <Text className="text-xs" style={{ color: KC.textLow }}>清空</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-5">
                             {selectedImages.map((uri, index) => (
-                                <View key={index} className="mr-4 relative pt-2">
+                                <View key={index} className="mr-3 relative pt-2">
                                     <Image
                                         source={{ uri }}
-                                        className="w-20 h-24 rounded-lg border border-white/20 bg-gray-800"
+                                        className="w-20 h-24 rounded-xl"
+                                        style={{ borderWidth: 1, borderColor: 'rgba(232,194,104,0.35)', backgroundColor: '#16101F' }}
                                         resizeMode="cover"
                                     />
                                     <TouchableOpacity
                                         onPress={() => setSelectedImages(prev => prev.filter((_, i) => i !== index))}
-                                        className="absolute top-0 -right-2 bg-red-500 rounded-full w-6 h-6 items-center justify-center border border-white shadow-sm z-10"
+                                        className="absolute top-0 -right-1.5 w-6 h-6 rounded-full items-center justify-center z-10"
+                                        style={{ backgroundColor: KC.blaze, borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)' }}
                                     >
-                                        <X size={14} color="white" />
+                                        <X size={13} color="white" />
                                     </TouchableOpacity>
                                 </View>
                             ))}
 
                             <TouchableOpacity
-                                onPress={handleMainButtonPress}
-                                className="w-20 h-24 rounded-lg border border-dashed border-white/30 items-center justify-center bg-white/5 active:bg-white/10 mt-2"
+                                onPress={takePhoto}
+                                className="w-20 h-24 rounded-xl items-center justify-center mt-2"
+                                style={{ borderWidth: 1, borderStyle: 'dashed', borderColor: 'rgba(255,255,255,0.28)', backgroundColor: 'rgba(255,255,255,0.04)' }}
                             >
-                                <Plus color="#AAA" size={24} />
+                                <Plus color={KC.textLow} size={22} />
+                                <Text className="text-[10px] mt-1" style={{ color: KC.textLow }}>继续拍</Text>
                             </TouchableOpacity>
                         </ScrollView>
 
-                        <TouchableOpacity
-                            onPress={handleAnalyze}
-                            className="w-full bg-pink-500 py-4 rounded-xl items-center shadow-lg active:scale-95 transition-transform flex-row justify-center"
-                        >
-                            <Text className="text-white font-bold text-xl tracking-widest mr-2">
-                                开始鉴定
-                            </Text>
-                            <ArrowRight color="white" size={24} />
+                        <TouchableOpacity onPress={handleAnalyze} activeOpacity={0.88}>
+                            <LinearGradient
+                                colors={['#FF5A9C', '#FF2E7E', '#C2125C']}
+                                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                                className="w-full py-4 rounded-2xl items-center flex-row justify-center"
+                                style={{ shadowColor: KC.crimson, shadowOpacity: 0.55, shadowRadius: 18, shadowOffset: { width: 0, height: 6 }, elevation: 12 }}
+                            >
+                                <Text className="text-white font-black text-lg tracking-[0.25em] mr-2">开始鉴定</Text>
+                                <ArrowRight color="white" size={22} />
+                            </LinearGradient>
                         </TouchableOpacity>
-                    </View>
+                    </Reveal>
                 )}
 
-                {/* Loading Overlay */}
+                {/* ── 加载遮罩 ── */}
                 {isLoading && (
-                    <View className="absolute inset-0 bg-black/60 z-50 items-center justify-center backdrop-blur-sm">
-                        <ActivityIndicator size="large" color="#FF1493" />
-                        <Text className="text-white mt-4 font-bold tracking-widest">
+                    <View className="absolute inset-0 z-50 items-center justify-center" style={{ backgroundColor: 'rgba(6,4,16,0.72)' }}>
+                        <ActivityIndicator size="large" color={KC.crimson} />
+                        <Text className="mt-4 font-bold tracking-widest" style={{ color: KC.textHi }}>
                             {loadingMessage || "处理中..."}
                         </Text>
                     </View>
                 )}
 
-                {/* Footer Branding */}
-                {selectedImages.length === 0 && (
-                    <View className="w-full items-center justify-center mb-6">
-                        <Text className="text-white text-[10px] tracking-[0.2em] uppercase font-bold text-center opacity-40">
+                {/* ── 页脚 ── */}
+                {!hasImages && (
+                    <Reveal delay={600} className="w-full items-center justify-center mb-5 z-10">
+                        <Text className="text-[9px] tracking-[0.3em] uppercase font-bold" style={{ color: 'rgba(247,243,249,0.30)' }}>
                             POWERED BY BRIGHT305
                         </Text>
-                        <TouchableOpacity onPress={handleCopyWeChat} className="mt-1 active:opacity-50">
-                            <Text className="text-gray-500 text-[10px] font-medium tracking-widest">
-                                WeChat: <Text className="underline decoration-gray-500">sunlinhuamj</Text> (点击复制)
+                        <TouchableOpacity onPress={handleCopyWeChat} className="mt-1.5 active:opacity-50">
+                            <Text className="text-[10px] font-medium tracking-widest" style={{ color: 'rgba(247,243,249,0.38)' }}>
+                                WeChat: <Text style={{ textDecorationLine: 'underline', color: 'rgba(232,194,104,0.6)' }}>sunlinhuamj</Text>(点击复制)
                             </Text>
                         </TouchableOpacity>
-                    </View>
+                    </Reveal>
                 )}
-
             </SafeAreaView>
-        </LinearGradient>
+        </View>
     );
 }

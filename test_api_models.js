@@ -1,6 +1,6 @@
 const fetch = require('node-fetch');
 
-const API_KEY = "sk-Yijg6QsrHpx4UTCQE6HqTRXJQ2Giqo9XvOvCoU5ZCAHFwuUA";
+const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY; // 从 .env 读取,不要硬编码
 const BASE_URL = "https://yinli.one/v1";
 
 async function testModels() {
