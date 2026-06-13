@@ -13,7 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import * as Speech from 'expo-speech';
-import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -59,6 +59,7 @@ const DEMO_DATA: Record<string, AnalysisResult> = {
             { name: '巴黎之花美丽时光', menuPrice: null, onlinePrice: 1280, ratio: null, diff: null, characteristics: '花卉瓶身,优雅花香,送礼有面', rating: 8.4, roast: '颜值即正义,送礼真香', knowledge: '巴黎之花顶级款,手绘银扣银莲花瓶身,白中白风格,花香优雅适合送礼。' },
         ],
     },
+    error: { type: 'menu', summary: '', items: [], error: '网络连接超时(演示)' },
 };
 
 /** 毒舌点评 单行小节:图标 + 标签 + 内容 */
@@ -126,6 +127,16 @@ export default function ResultScreen() {
     const [targetUris, setTargetUris] = useState<string[]>([]);
     const [isSpeaking, setIsSpeaking] = useState(false);
 
+    // 可重复调用的分析(供首次加载与"重试"复用)
+    const runAnalysis = useCallback((uris: string[]) => {
+        setLoading(true);
+        setResult(null);
+        analyzeWineList(uris)
+            .then(setResult)
+            .catch(err => setResult({ type: 'menu', summary: '', items: [], error: err instanceof Error ? err.message : '分析失败,请重试' }))
+            .finally(() => setLoading(false));
+    }, []);
+
     useEffect(() => {
         // 演示模式:免调 API 直接渲染样例数据
         if (demo && DEMO_DATA[demo]) {
@@ -148,18 +159,9 @@ export default function ResultScreen() {
 
         setTargetUris(uris);
 
-        if (uris.length > 0) {
-            analyzeWineList(uris)
-                .then(data => setResult(data))
-                .catch(err => {
-                    console.error(err);
-                    Alert.alert("Error", "Analysis failed");
-                })
-                .finally(() => setLoading(false));
-        } else {
-            setLoading(false);
-        }
-    }, [imageUri, imageUris, demo]);
+        if (uris.length > 0) runAnalysis(uris);
+        else setLoading(false);
+    }, [imageUri, imageUris, demo, runAnalysis]);
 
     // ── 整单结论 ──
     const verdict = useMemo(() => (result ? getOverallVerdict(result) : null), [result]);
@@ -347,6 +349,35 @@ export default function ResultScreen() {
 
     if (!result) return <View className="flex-1 bg-void" />;
 
+    /* ════════ 错误态:重试,而非假数据 ════════ */
+    if (result.error) {
+        return (
+            <View className="flex-1 bg-void">
+                <LinearGradient colors={['#1A0710', '#0E0818', '#060410']} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+                <SafeAreaView className="flex-1 items-center justify-center px-10">
+                    <View className="w-full items-center rounded-3xl border px-6 py-8" style={{ maxWidth: SHELL, backgroundColor: 'rgba(18,12,30,0.7)', borderColor: 'rgba(255,90,95,0.3)' }}>
+                        <View className="mb-4"><VerdictMark kind="blaze" size={44} color={KC.blaze} /></View>
+                        <Text className="font-black text-lg mb-1.5" style={{ color: KC.textHi }}>没能识别出来</Text>
+                        <Text className="text-[13px] text-center leading-6 mb-1" style={[{ color: KC.textMid }, CJK]}>
+                            可能是网络波动,或图片里的酒单文字不够清晰。
+                        </Text>
+                        <Text className="text-[11px] text-center mb-6" style={{ color: KC.textLow }} numberOfLines={2}>
+                            {result.error}
+                        </Text>
+                        <TouchableOpacity onPress={() => runAnalysis(targetUris)} disabled={targetUris.length === 0} activeOpacity={0.88} className="w-full">
+                            <LinearGradient colors={['#FF5A9C', '#FF2E7E', '#C2125C']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} className="w-full py-3.5 rounded-2xl items-center">
+                                <Text className="text-white font-black text-base tracking-widest">重新鉴定</Text>
+                            </LinearGradient>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => router.dismissAll()} className="mt-4">
+                            <Text className="text-[13px]" style={{ color: KC.textLow }}>换张图片 / 返回首页</Text>
+                        </TouchableOpacity>
+                    </View>
+                </SafeAreaView>
+            </View>
+        );
+    }
+
     /* ════════ 结果态:判决星海报告 ════════ */
     const tint = verdict?.tier.color || KC.crimson;
     return (
@@ -365,6 +396,7 @@ export default function ResultScreen() {
                 <View className="w-full self-center px-5 py-3 flex-row justify-between items-center z-10" style={{ maxWidth: SHELL }}>
                     <TouchableOpacity
                         onPress={() => router.dismissAll()}
+                        accessibilityRole="button" accessibilityLabel="返回首页"
                         className="w-10 h-10 rounded-full items-center justify-center"
                         style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' }}
                     >
@@ -378,6 +410,7 @@ export default function ResultScreen() {
                     </View>
                     <TouchableOpacity
                         onPress={handleShare}
+                        accessibilityRole="button" accessibilityLabel="分享鉴定报告"
                         className="w-10 h-10 rounded-full items-center justify-center"
                         style={{ backgroundColor: 'rgba(255,46,126,0.16)', borderWidth: 1, borderColor: 'rgba(255,46,126,0.4)' }}
                     >
@@ -507,6 +540,7 @@ export default function ResultScreen() {
                                     </View>
                                     <TouchableOpacity
                                         onPress={handleSpeak}
+                                        accessibilityRole="button" accessibilityLabel={isSpeaking ? '停止朗读' : '朗读毒舌点评'}
                                         className="w-9 h-9 rounded-full items-center justify-center"
                                         style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,126,174,0.3)' }}
                                     >

@@ -299,7 +299,7 @@ export default function VerdictCosmos({ tint = '#FF2E7E', score = 50, paused = f
         <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
             <Canvas
                 frameloop={paused ? 'never' : 'always'}
-                dpr={[1, 1.75]}
+                dpr={[1, 1.5]}
                 camera={{ position: [0, 0.3, 8], fov: 46 }}
                 gl={{ antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: true }}
                 onCreated={(state) => { state.gl.setClearColor('#060410', 1); setTimeout(() => state.advance(performance.now()), 120); setTimeout(() => state.advance(performance.now()), 420); }}

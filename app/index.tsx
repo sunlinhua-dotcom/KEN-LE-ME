@@ -38,6 +38,13 @@ export default function HomeScreen() {
         }
     };
 
+    // 释放 web 端 createObjectURL 产生的 blob,避免内存泄漏(原生 file:// 不处理)
+    const revokeIfBlob = (uri: string) => {
+        if (Platform.OS === 'web' && typeof uri === 'string' && uri.startsWith('blob:')) {
+            try { URL.revokeObjectURL(uri); } catch { /* noop */ }
+        }
+    };
+
     const processImage = (result: ImagePicker.ImagePickerResult) => {
         if (!result.canceled && result.assets && result.assets.length > 0) {
             const newUris = result.assets.map(asset => asset.uri);
@@ -295,7 +302,8 @@ export default function HomeScreen() {
                                 </Svg>
                             </Animated.View>
 
-                            <TouchableOpacity onPress={takePhoto} activeOpacity={0.85} disabled={isLoading}>
+                            <TouchableOpacity onPress={takePhoto} activeOpacity={0.85} disabled={isLoading}
+                                accessibilityRole="button" accessibilityLabel="拍摄酒单进行鉴定">
                                 <View style={{
                                     shadowColor: KC.crimson, shadowOpacity: 0.75, shadowRadius: 36, shadowOffset: { width: 0, height: 0 },
                                     borderRadius: 999, elevation: 18,
@@ -374,7 +382,11 @@ export default function HomeScreen() {
                                 <Text className="font-black text-lg" style={{ color: KC.textHi }}>待鉴定</Text>
                                 <Text className="ml-2 font-black text-lg" style={{ color: KC.crimson }}>{selectedImages.length} 张</Text>
                             </View>
-                            <TouchableOpacity onPress={() => setSelectedImages([])} className="px-3 py-1.5 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.07)' }}>
+                            <TouchableOpacity
+                                onPress={() => { selectedImages.forEach(revokeIfBlob); setSelectedImages([]); }}
+                                accessibilityRole="button" accessibilityLabel="清空已选图片"
+                                className="px-3 py-1.5 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.07)' }}
+                            >
                                 <Text className="text-xs" style={{ color: KC.textLow }}>清空</Text>
                             </TouchableOpacity>
                         </View>
@@ -389,7 +401,8 @@ export default function HomeScreen() {
                                         resizeMode="cover"
                                     />
                                     <TouchableOpacity
-                                        onPress={() => setSelectedImages(prev => prev.filter((_, i) => i !== index))}
+                                        onPress={() => { revokeIfBlob(uri); setSelectedImages(prev => prev.filter((_, i) => i !== index)); }}
+                                        accessibilityRole="button" accessibilityLabel={`移除第 ${index + 1} 张图片`}
                                         className="absolute top-0 -right-1.5 w-6 h-6 rounded-full items-center justify-center z-10"
                                         style={{ backgroundColor: KC.blaze, borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)' }}
                                     >
@@ -400,6 +413,7 @@ export default function HomeScreen() {
 
                             <TouchableOpacity
                                 onPress={takePhoto}
+                                accessibilityRole="button" accessibilityLabel="继续拍摄或添加图片"
                                 className="w-20 h-24 rounded-xl items-center justify-center mt-2"
                                 style={{ borderWidth: 1, borderStyle: 'dashed', borderColor: 'rgba(255,255,255,0.28)', backgroundColor: 'rgba(255,255,255,0.04)' }}
                             >

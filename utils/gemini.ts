@@ -25,15 +25,14 @@ export interface AnalysisResult {
     type: 'menu' | 'single';
     summary: string;
     items: WineItem[];
+    /** 出错时填写;UI 据此显示错误态 + 重试,而非假数据 */
+    error?: string;
 }
 
-const MOCK_DATA: AnalysisResult = {
-    type: 'menu',
-    summary: "⚠️ 分析服务暂时不可用 (Mock Data)。请检查 API Key 设置。",
-    items: [
-        { name: "示例 - 奔富 407", menuPrice: 1280, onlinePrice: 600, ratio: 2.1, diff: 680, characteristics: "澳洲名庄，商务宴请硬通货", rating: 8.5 },
-    ]
-};
+/** 失败时返回的干净错误对象(不含任何假酒款,UI 显示重试) */
+function errorResult(message: string): AnalysisResult {
+    return { type: 'menu', summary: '', items: [], error: message };
+}
 
 export async function analyzeWineList(imageUris: string[]): Promise<AnalysisResult> {
 
@@ -65,7 +64,7 @@ export async function analyzeWineList(imageUris: string[]): Promise<AnalysisResu
 
     if (!API_KEY) {
         console.error("❌ No API Key found.");
-        return { ...MOCK_DATA, summary: "未配置 API Key，请在 .env 中设置。" };
+        return errorResult("未配置 API Key（EXPO_PUBLIC_GEMINI_API_KEY）。");
     }
 
     try {
@@ -271,9 +270,6 @@ export async function analyzeWineList(imageUris: string[]): Promise<AnalysisResu
 
     } catch (error) {
         console.error("❌ Analysis Error:", error);
-        return {
-            ...MOCK_DATA,
-            summary: `😓 出错了 (解析失败): 请重试。\n错误细节: ${error instanceof Error ? error.message : String(error)}`
-        };
+        return errorResult(error instanceof Error ? error.message : String(error));
     }
 }

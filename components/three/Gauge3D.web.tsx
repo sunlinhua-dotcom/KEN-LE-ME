@@ -99,7 +99,7 @@ export default function Gauge3D({ value, color, label, size = 150, unit = '' }: 
     return (
         <View style={{ width: size, height: H, alignItems: 'center', justifyContent: 'center' }}>
             <Canvas
-                dpr={[1, 2]}
+                dpr={[1, 1.5]}
                 camera={{ position: [0, 0, 4.1], fov: 38 }}
                 gl={{ antialias: true, alpha: true, powerPreference: 'high-performance', preserveDrawingBuffer: true }}
                 onCreated={(state) => {

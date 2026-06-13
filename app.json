@@ -56,12 +56,6 @@
             "backgroundColor": "#000000"
           }
         }
-      ],
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "我们需要相机权限来拍摄酒单进行识别。"
-        }
       ]
     ],
     "experiments": {

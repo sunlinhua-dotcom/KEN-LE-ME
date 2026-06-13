@@ -152,7 +152,7 @@ export default function ScanTunnel({ paused = false }: { paused?: boolean }) {
         <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
             <Canvas
                 frameloop={paused ? 'never' : 'always'}
-                dpr={[1, 2]}
+                dpr={[1, 1.5]}
                 camera={{ position: [0, 0, 6], fov: 50 }}
                 gl={{ antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: true }}
                 onCreated={(state) => {
