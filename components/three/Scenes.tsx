@@ -19,6 +19,8 @@ interface SceneProps {
     score?: number;
     /** verdict 场景:档位,驱动不同动画风格 */
     mood?: VerdictMood;
+    /** verdict 场景:形态 0-11(12 种不同 3D 形状) */
+    variant?: number;
 }
 
 /**
@@ -27,8 +29,8 @@ interface SceneProps {
  * 不会被 Metro 提升到首屏 eager 的 __common(否则等于没拆)。
  * 子场景的 .web / 原生实现仍由各自的文件按平台自动解析。
  */
-export default function Scene({ name, paused, tint, score, mood }: SceneProps) {
+export default function Scene({ name, paused, tint, score, mood, variant }: SceneProps) {
     if (name === 'scan') return <ScanTunnel paused={paused} />;
-    if (name === 'verdict') return <VerdictCosmos paused={paused} tint={tint} score={score} mood={mood} />;
+    if (name === 'verdict') return <VerdictCosmos paused={paused} tint={tint} score={score} mood={mood} variant={variant} />;
     return <WineUniverse paused={paused} />;
 }

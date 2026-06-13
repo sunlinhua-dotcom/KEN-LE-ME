@@ -7,7 +7,7 @@ import Seal from '@/components/svg/Seal';
 import Stars from '@/components/svg/Stars';
 import Deferred from '@/components/three/Deferred';
 import { KC, SerifNum } from '@/constants/theme';
-import { formatPrice, getCardTheme, getHighlights, getItemTier, getOverallVerdict, parseSummary } from '@/utils/format';
+import { formatPrice, getCardTheme, getHighlights, getItemTier, getOverallVerdict, parseSummary, pickResultVariant } from '@/utils/format';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -118,7 +118,7 @@ function PriceBlock({ wine }: { wine: WineItem }) {
 }
 
 export default function ResultScreen() {
-    const { imageUri, imageUris, demo } = useLocalSearchParams<{ imageUri?: string; imageUris?: string; demo?: string }>();
+    const { imageUri, imageUris, demo, variant: variantOverride } = useLocalSearchParams<{ imageUri?: string; imageUris?: string; demo?: string; variant?: string }>();
     const router = useRouter();
     const [loading, setLoading] = useState(true);
     const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -165,6 +165,14 @@ export default function ResultScreen() {
     const verdict = useMemo(() => (result ? getOverallVerdict(result) : null), [result]);
     const highlights = useMemo(() => (result ? getHighlights(result) : null), [result]);
     const parsed = useMemo(() => (result?.summary ? parseSummary(result.summary) : null), [result]);
+    // 3D 形态:?variant=N 可手动预览 12 种;否则按结果内容选择
+    const sceneVariant = useMemo(() => {
+        if (variantOverride != null && variantOverride !== '') {
+            const n = parseInt(variantOverride, 10);
+            if (!isNaN(n)) return ((n % 12) + 12) % 12;
+        }
+        return result && verdict ? pickResultVariant(result, verdict) : 0;
+    }, [result, verdict, variantOverride]);
     const displayItems = useMemo(() => {
         if (!result?.items) return [];
         if (verdict?.mode === 'quality') {
@@ -343,7 +351,7 @@ export default function ResultScreen() {
     const tint = verdict?.tier.color || KC.crimson;
     return (
         <View className="flex-1 bg-void">
-            <Deferred><Scene name="verdict" tint={tint} score={verdict?.score ?? 50} mood={verdict?.tier.key} /></Deferred>
+            <Deferred><Scene name="verdict" tint={tint} score={verdict?.score ?? 50} mood={verdict?.tier.key} variant={sceneVariant} /></Deferred>
             {/* 内容可读性:底部加深 */}
             <LinearGradient
                 colors={['rgba(6,4,16,0.15)', 'rgba(6,4,16,0.55)', 'rgba(6,4,16,0.82)']}

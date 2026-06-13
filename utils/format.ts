@@ -107,6 +107,28 @@ function skipLabel(s: string, i: number): number {
     return i;
 }
 
+/**
+ * 选择结果页 3D 形态(0–11,共 12 种),形状和感觉随结果变化:
+ * - 按档位分"家族"(危险/华贵/舒缓/鉴定),决定整体气质;
+ * - 家族内按内容哈希细分,保证不同酒单 / 不同图片看到不同形态。
+ * 12 种形态见 VerdictCosmos.web 的 HEROES。
+ */
+export function pickResultVariant(result: AnalysisResult, verdict: OverallVerdict): number {
+    const families: Record<VerdictTier['key'], number[]> = {
+        blaze: [0, 1, 2, 3],   // 危险:宝石 / 熔岩球 / 吸金漩涡 / 碎晶环
+        amber: [4, 5, 6],      // 华贵:钻石光环 / 金币雨 / 棱镜簇
+        mint: [7, 8, 9],       // 舒缓:绽放球 / 水晶花园 / 花瓣
+        scan: [10, 11],        // 鉴定:线框星球 / 星座网络
+    };
+    const fam = families[verdict.tier.key] || [0, 4, 7, 10];
+
+    // 内容哈希:首款名 + 款数 + 分数 + 总溢价 → 同档位不同结果也会换形态
+    const seed = `${result.items?.[0]?.name || ''}|${result.items?.length || 0}|${verdict.score}|${Math.round(verdict.totalPremium)}`;
+    let h = 0;
+    for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+    return fam[h % fam.length];
+}
+
 export interface Highlights {
     worst?: { name: string; premium: number };   // 最坑(溢价最高)
     best?: { name: string; ratio: number };       // 最值(倍数最低)
