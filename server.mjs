@@ -13,7 +13,7 @@
  */
 import express from 'express';
 
-const PORT = process.env.PORT || 8080;
+const PORT = Number(process.env.PORT) || 8080;
 const API_KEY = process.env.GEMINI_API_KEY;
 const BASE_URL = process.env.GEMINI_BASE_URL || 'https://api.apiyi.com/v1';
 const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
