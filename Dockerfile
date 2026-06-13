@@ -2,35 +2,19 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files (ensure you don't copy the lockfile if it causes issues, or regenerate it)
+# 先装依赖(利用缓存)
 COPY package.json ./
-
-# Install dependencies (force legacy peer deps to avoid conflicts)
 RUN npm install --legacy-peer-deps
-# Explicitly ensure react-native-svg is installed for web build
 RUN npm install react-native-svg
-RUN npm install -g serve
 
-# Copy project files
+# 复制项目
 COPY . .
 
-# ─────────────────────────────────────────────────────────────
-# 构建期环境变量:EXPO_PUBLIC_* 会在 `expo export` 时被内联进 JS 包,
-# 因此必须在 build 阶段(RUN expo export 之前)就存在。
-# Zeabur 会把面板里设置的服务环境变量作为 --build-arg 传进来。
-# ─────────────────────────────────────────────────────────────
-ARG EXPO_PUBLIC_GEMINI_API_KEY
-ARG EXPO_PUBLIC_GEMINI_BASE_URL=https://api.apiyi.com/v1
-ARG EXPO_PUBLIC_GEMINI_MODEL=gemini-3.5-flash
-ENV EXPO_PUBLIC_GEMINI_API_KEY=$EXPO_PUBLIC_GEMINI_API_KEY
-ENV EXPO_PUBLIC_GEMINI_BASE_URL=$EXPO_PUBLIC_GEMINI_BASE_URL
-ENV EXPO_PUBLIC_GEMINI_MODEL=$EXPO_PUBLIC_GEMINI_MODEL
-
-# Build the web app
+# 构建静态站(前端已不含任何 key,无需构建期注入密钥)
 RUN npx expo export -p web
 
-# Expose port 8080 (Zeabur default)
 EXPOSE 8080
 
-# Serve the 'dist' folder on port 8080
-CMD ["serve", "dist", "-s", "-l", "8080"]
+# server.mjs:托管 dist 静态站 + 处理 /api/analyze 转发。
+# 运行时从环境变量读 GEMINI_API_KEY(在 Zeabur 面板设置,不带 EXPO_PUBLIC_ 前缀)。
+CMD ["node", "server.mjs"]
