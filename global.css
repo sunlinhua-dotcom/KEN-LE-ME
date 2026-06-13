@@ -10,9 +10,12 @@
         background-color: #060410;
         /* Fallback */
 
-        /* ── djhh 中文排版规则 ── */
+        /* ── djhh 中文排版规则(word-break / text-wrap 会被 RN-web 文本继承)── */
         word-break: keep-all;
         overflow-wrap: anywhere;
+        /* 末行防孤字:pretty 在普通流里收尾更稳(标题再单独用 balance) */
+        text-wrap: pretty;
+        hanging-punctuation: allow-end;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
         text-rendering: optimizeLegibility;

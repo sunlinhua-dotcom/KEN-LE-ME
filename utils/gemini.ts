@@ -17,6 +17,8 @@ export interface WineItem {
     rating: number;
     /** 针对这一款的毒舌一句(≤20 字,中文,犀利) */
     roast?: string;
+    /** 这一款的知识介绍(产区 / 品种 / 为何出名,≤45 字,中文) */
+    knowledge?: string;
 }
 
 export interface AnalysisResult {
@@ -133,6 +135,9 @@ export async function analyzeWineList(imageUris: string[]): Promise<AnalysisResu
          - For EACH item, also write a "roast": a single savage/funny one-liner
            in Chinese, MAX 20 characters, sharp and specific to THAT item
            (mock the pricing if overpriced, praise if good value). No emoji inside roast.
+         - For EACH item, also write "knowledge": a useful intro in Chinese (MAX 45
+           characters) — origin region / grape or category / why it's notable / a
+           drinking tip. Educational and specific, not generic. No emoji inside.
 
       **Summary Guidelines:**
       - Structure: 💰Best Value -> 💸Most Expensive -> 😈Savage Review.
@@ -150,7 +155,8 @@ export async function analyzeWineList(imageUris: string[]): Promise<AnalysisResu
             "ratio": number | null,
             "characteristics": "Chinese description",
             "rating": number,
-            "roast": "中文毒舌一句,≤20字"
+            "roast": "中文毒舌一句,≤20字",
+            "knowledge": "中文知识介绍,≤45字"
           }
         ]
       }

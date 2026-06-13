@@ -1,12 +1,13 @@
 import Reveal from '@/components/anim/Reveal';
 import Gauge from '@/components/svg/Gauge';
 import { ArrowLeft, Check, Share2, Square, Volume2 } from '@/components/svg/Icons';
+import { BookGlyph, CoinGlyph, FlameGlyph, PriceTagGlyph, RobotMark, TasteGlyph, VerdictMark } from '@/components/svg/Glyphs';
 import Medal from '@/components/svg/Medal';
 import Seal from '@/components/svg/Seal';
 import Stars from '@/components/svg/Stars';
 import Deferred from '@/components/three/Deferred';
 import { KC, SerifNum } from '@/constants/theme';
-import { formatPrice, getCardTheme, getHighlights, getItemTier, getOverallVerdict } from '@/utils/format';
+import { formatPrice, getCardTheme, getHighlights, getItemTier, getOverallVerdict, parseSummary } from '@/utils/format';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -27,6 +28,9 @@ const Gauge3D = lazy(() => import('@/components/three/Scenes').then(m => ({ defa
 // 内容列最大宽度(宽屏居中,避免卡片被拉伸)
 const SHELL = 600;
 
+// djhh:中文段落词级断行 + 末行防孤字(RN-web 透传到 DOM)
+const CJK = Platform.OS === 'web' ? ({ wordBreak: 'keep-all', overflowWrap: 'break-word', textWrap: 'pretty' } as any) : {};
+
 const SCAN_STEPS = [
     { at: 0, label: '识别酒标与菜单文字' },
     { at: 3, label: '全网比价(淘宝 / 京东)' },
@@ -40,22 +44,38 @@ const DEMO_DATA: Record<string, AnalysisResult> = {
         type: 'menu',
         summary: '💰最值:长城天赋,店里卖得跟电商差不多,良心。 💸最贵:这瓶 1499 的奔富比电商贵出一只 iPhone。 😈点评:这酒单看着唬人,实则一半靠"看不懂"的进口名收智商税,懂行的直接点长城走人。',
         items: [
-            { name: '奔富 BIN389 设拉子赤霞珠', menuPrice: 1499, onlinePrice: 558, ratio: 2.69, diff: 941, characteristics: '澳洲名庄,商务宴请硬通货,但餐厅加价最狠', rating: 8.6, roast: '这价够买俩瓶还多张电影票' },
-            { name: '拉菲传奇波尔多', menuPrice: 880, onlinePrice: 328, ratio: 2.68, diff: 552, characteristics: '入门级"拉菲",名字唬人,品质普通', rating: 7.2, roast: '蹭"拉菲"俩字,溢价翻倍' },
-            { name: '黄尾袋鼠西拉', menuPrice: 188, onlinePrice: 79, ratio: 2.38, diff: 109, characteristics: '澳洲走量餐酒,果味直接,日常口粮', rating: 6.8, roast: '超市常客,这儿翻倍卖' },
-            { name: '长城天赋赤霞珠', menuPrice: 268, onlinePrice: 218, ratio: 1.23, diff: 50, characteristics: '国产老牌,价格透明,宴客不踩雷', rating: 7.5, roast: '加价克制,这桌唯一良心' },
+            { name: '奔富 BIN389 设拉子赤霞珠', menuPrice: 1499, onlinePrice: 558, ratio: 2.69, diff: 941, characteristics: '澳洲名庄,商务宴请硬通货,但餐厅加价最狠', rating: 8.6, roast: '这价够买俩瓶还多张电影票', knowledge: '澳洲南澳产区,奔富 BIN 系列经典款,设拉子为主混赤霞珠,可陈放 10 年以上。' },
+            { name: '拉菲传奇波尔多', menuPrice: 880, onlinePrice: 328, ratio: 2.68, diff: 552, characteristics: '入门级"拉菲",名字唬人,品质普通', rating: 7.2, roast: '蹭"拉菲"俩字,溢价翻倍', knowledge: '法国波尔多大区级,拉菲罗斯柴尔德旗下入门系列,与正牌古堡是两回事。' },
+            { name: '黄尾袋鼠西拉', menuPrice: 188, onlinePrice: 79, ratio: 2.38, diff: 109, characteristics: '澳洲走量餐酒,果味直接,日常口粮', rating: 6.8, roast: '超市常客,这儿翻倍卖', knowledge: '澳洲畅销餐酒品牌,西拉葡萄,果味浓郁易入口,适合配烤肉与日常小酌。' },
+            { name: '长城天赋赤霞珠', menuPrice: 268, onlinePrice: 218, ratio: 1.23, diff: 50, characteristics: '国产老牌,价格透明,宴客不踩雷', rating: 7.5, roast: '加价克制,这桌唯一良心', knowledge: '国产老牌中粮长城旗下,河北/宁夏赤霞珠,性价比稳,商务宴请安全牌。' },
         ],
     },
     quality: {
         type: 'single',
         summary: '💰最值:这几瓶里巴黎之花最实在。 💸最贵:不用说也是黑桃 A。 😈点评:桌上这几瓶搭配挺讲究,有面子也喝得下去,识货。',
         items: [
-            { name: 'Armand de Brignac 黑桃 A 香槟', menuPrice: null, onlinePrice: 4280, ratio: null, diff: null, characteristics: '夜店顶流,金瓶气场全开,口感其实细腻', rating: 9.1, roast: '气场拉满,钱包阵亡' },
-            { name: '唐培里侬香槟王 2013', menuPrice: null, onlinePrice: 1880, ratio: null, diff: null, characteristics: '香槟标杆,矿物感强,陈年潜力佳', rating: 8.9, roast: '懂行的都点它,不踩雷' },
-            { name: '巴黎之花美丽时光', menuPrice: null, onlinePrice: 1280, ratio: null, diff: null, characteristics: '花卉瓶身,优雅花香,送礼有面', rating: 8.4, roast: '颜值即正义,送礼真香' },
+            { name: 'Armand de Brignac 黑桃 A 香槟', menuPrice: null, onlinePrice: 4280, ratio: null, diff: null, characteristics: '夜店顶流,金瓶气场全开,口感其实细腻', rating: 9.1, roast: '气场拉满,钱包阵亡', knowledge: '法国香槟区,金属漆金瓶辨识度极高,黑桃符号是其标志,夜店与名流圈宠儿。' },
+            { name: '唐培里侬香槟王 2013', menuPrice: null, onlinePrice: 1880, ratio: null, diff: null, characteristics: '香槟标杆,矿物感强,陈年潜力佳', rating: 8.9, roast: '懂行的都点它,不踩雷', knowledge: '酩悦旗下顶级年份香槟,只在好年份出品,以矿物感和陈年潜力著称。' },
+            { name: '巴黎之花美丽时光', menuPrice: null, onlinePrice: 1280, ratio: null, diff: null, characteristics: '花卉瓶身,优雅花香,送礼有面', rating: 8.4, roast: '颜值即正义,送礼真香', knowledge: '巴黎之花顶级款,手绘银扣银莲花瓶身,白中白风格,花香优雅适合送礼。' },
         ],
     },
 };
+
+/** 毒舌点评 单行小节:图标 + 标签 + 内容 */
+function SummaryRow({ icon, label, labelColor, text, last }: { icon: React.ReactNode; label: string; labelColor: string; text: string; last?: boolean }) {
+    return (
+        <View
+            className="flex-row items-start"
+            style={last ? undefined : { marginBottom: 11, paddingBottom: 11, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}
+        >
+            <View style={{ marginTop: 1, marginRight: 10 }}>{icon}</View>
+            <View className="flex-1">
+                <Text className="text-[11px] font-black mb-0.5" style={{ color: labelColor, letterSpacing: 3 }}>{label}</Text>
+                <Text className="text-[14px] font-medium" style={[{ color: KC.textHi, lineHeight: 23 }, CJK]}>{text}</Text>
+            </View>
+        </View>
+    );
+}
 
 /** 突出价格块:店内价大号 + 电商对比条(空白=溢价部分) */
 function PriceBlock({ wine }: { wine: WineItem }) {
@@ -144,6 +164,7 @@ export default function ResultScreen() {
     // ── 整单结论 ──
     const verdict = useMemo(() => (result ? getOverallVerdict(result) : null), [result]);
     const highlights = useMemo(() => (result ? getHighlights(result) : null), [result]);
+    const parsed = useMemo(() => (result?.summary ? parseSummary(result.summary) : null), [result]);
     const displayItems = useMemo(() => {
         if (!result?.items) return [];
         if (verdict?.mode === 'quality') {
@@ -460,32 +481,55 @@ export default function ResultScreen() {
                             </Reveal>
                         )}
 
-                        {/* ── 毒舌点评 ── */}
+                        {/* ── 毒舌点评(结构化小节)── */}
                         <Reveal delay={90}>
                             <View
-                                className="rounded-3xl border p-5 mb-5"
-                                style={{ backgroundColor: 'rgba(255,46,126,0.07)', borderColor: 'rgba(255,46,126,0.30)' }}
+                                className="rounded-3xl border mb-5 overflow-hidden"
+                                style={{ borderColor: 'rgba(255,46,126,0.32)' }}
                             >
-                                <View className="flex-row items-center justify-between mb-2.5">
+                                <LinearGradient
+                                    colors={['rgba(255,46,126,0.14)', 'rgba(255,46,126,0.05)']}
+                                    style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                                />
+                                {/* 头部 */}
+                                <View className="flex-row items-center justify-between px-5 pt-4 pb-1">
                                     <View className="flex-row items-center">
-                                        <Text className="text-xl mr-2">🤖</Text>
-                                        <Text style={{ color: KC.crimson }} className="font-black text-base tracking-widest">毒舌点评</Text>
+                                        <RobotMark size={26} />
+                                        <Text style={{ color: KC.crimson }} className="font-black text-base tracking-[0.2em] ml-2.5">毒舌点评</Text>
                                     </View>
                                     <TouchableOpacity
                                         onPress={handleSpeak}
                                         className="w-9 h-9 rounded-full items-center justify-center"
-                                        style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
+                                        style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,126,174,0.3)' }}
                                     >
                                         {isSpeaking ? (
-                                            <Square size={16} color="#FF7EAE" fill="#FF7EAE" />
+                                            <Square size={15} color="#FF7EAE" fill="#FF7EAE" />
                                         ) : (
-                                            <Volume2 size={17} color="#FF7EAE" />
+                                            <Volume2 size={16} color="#FF7EAE" />
                                         )}
                                     </TouchableOpacity>
                                 </View>
-                                <Text className="text-[15px] font-medium" style={{ color: KC.textHi, lineHeight: 26 }}>
-                                    {result.summary}
-                                </Text>
+
+                                {/* 小节:最值 / 最贵 / 点评 */}
+                                <View className="px-5 pb-4 pt-2">
+                                    {parsed?.value || parsed?.expensive || parsed?.roast ? (
+                                        <>
+                                            {parsed?.value && (
+                                                <SummaryRow icon={<CoinGlyph size={20} />} label="最值" labelColor={KC.mint} text={parsed.value} />
+                                            )}
+                                            {parsed?.expensive && (
+                                                <SummaryRow icon={<PriceTagGlyph size={20} />} label="最贵" labelColor={KC.gold} text={parsed.expensive} />
+                                            )}
+                                            {parsed?.roast && (
+                                                <SummaryRow icon={<FlameGlyph size={20} />} label="点评" labelColor={KC.crimson} text={parsed.roast} last />
+                                            )}
+                                        </>
+                                    ) : (
+                                        <Text className="text-[15px] font-medium" style={[{ color: KC.textHi, lineHeight: 27 }, CJK]}>
+                                            {result.summary}
+                                        </Text>
+                                    )}
+                                </View>
                             </View>
                         </Reveal>
 
@@ -571,25 +615,43 @@ export default function ResultScreen() {
 
                                             {/* 毒舌一句 */}
                                             {!!wine.roast && (
-                                                <View className="flex-row items-start mt-3.5 rounded-xl px-3.5 py-2.5" style={{ backgroundColor: 'rgba(255,46,126,0.10)', borderLeftWidth: 2, borderLeftColor: KC.crimson }}>
-                                                    <Text className="text-sm mr-1.5">😈</Text>
-                                                    <Text className="flex-1 text-[13px] font-semibold leading-5" style={{ color: '#FFB3D0' }}>{wine.roast}</Text>
+                                                <View className="flex-row items-center mt-3.5 rounded-xl px-3.5 py-2.5" style={{ backgroundColor: 'rgba(255,46,126,0.10)', borderLeftWidth: 2, borderLeftColor: KC.crimson }}>
+                                                    <FlameGlyph size={17} />
+                                                    <Text className="flex-1 text-[13.5px] font-semibold ml-2" style={[{ color: '#FFB3D0', lineHeight: 20 }, CJK]}>{wine.roast}</Text>
                                                 </View>
                                             )}
 
-                                            {/* 特色 */}
-                                            {!!wine.characteristics && (
-                                                <View className="rounded-xl px-3.5 py-3 mt-2.5" style={{ backgroundColor: 'rgba(0,0,0,0.22)' }}>
-                                                    <Text className="text-[13px] leading-5" style={{ color: KC.textMid }}>
-                                                        🍷 {wine.characteristics}
-                                                    </Text>
+                                            {/* 知识介绍 + 风味 */}
+                                            {(!!wine.knowledge || !!wine.characteristics) && (
+                                                <View className="rounded-xl mt-2.5 overflow-hidden" style={{ backgroundColor: 'rgba(0,0,0,0.24)' }}>
+                                                    {!!wine.knowledge && (
+                                                        <View className="flex-row items-start px-3.5 py-3">
+                                                            <View style={{ marginTop: 1, marginRight: 9 }}><BookGlyph size={17} color={KC.gold} /></View>
+                                                            <View className="flex-1">
+                                                                <Text className="text-[10px] font-black mb-0.5" style={{ color: KC.gold, letterSpacing: 2 }}>冷 知 识</Text>
+                                                                <Text className="text-[13px]" style={[{ color: KC.textMid, lineHeight: 21 }, CJK]}>{wine.knowledge}</Text>
+                                                            </View>
+                                                        </View>
+                                                    )}
+                                                    {!!wine.knowledge && !!wine.characteristics && (
+                                                        <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)', marginHorizontal: 14 }} />
+                                                    )}
+                                                    {!!wine.characteristics && (
+                                                        <View className="flex-row items-start px-3.5 py-3">
+                                                            <View style={{ marginTop: 1, marginRight: 9 }}><TasteGlyph size={17} /></View>
+                                                            <View className="flex-1">
+                                                                <Text className="text-[10px] font-black mb-0.5" style={{ color: KC.goldSoft, letterSpacing: 2 }}>风 味</Text>
+                                                                <Text className="text-[13px]" style={[{ color: KC.textMid, lineHeight: 21 }, CJK]}>{wine.characteristics}</Text>
+                                                            </View>
+                                                        </View>
+                                                    )}
                                                 </View>
                                             )}
 
                                             {/* 推荐结论(突出) */}
                                             <View className="flex-row items-center mt-3.5 self-start px-3.5 py-2 rounded-full" style={{ backgroundColor: `${theme.accent}1F`, borderWidth: 1, borderColor: `${theme.accent}55` }}>
-                                                <Text className="text-sm mr-1.5">{tier.emoji}</Text>
-                                                <Text className="text-[13px] font-black tracking-wide" style={{ color: theme.accent }}>
+                                                <VerdictMark kind={tier.key} size={15} color={theme.accent} />
+                                                <Text className="text-[13px] font-black tracking-wide ml-1.5" style={{ color: theme.accent }}>
                                                     {theme.advice}
                                                 </Text>
                                             </View>

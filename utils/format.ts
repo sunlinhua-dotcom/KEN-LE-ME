@@ -58,6 +58,55 @@ export function getCardTheme(tier: VerdictTier): CardTheme {
     return { ...CARD_THEME[tier.key], advice: ADVICE[tier.key] };
 }
 
+export interface SummaryParts {
+    value?: string;      // 最值
+    expensive?: string;  // 最贵
+    roast?: string;      // 点评
+    raw: string;         // 原文兜底
+}
+
+/**
+ * 把 AI 的 "💰最值: … 💸最贵: … 😈点评: …" run-on 字符串拆成结构化小节,
+ * 供结果页分行渲染(解决整段挤在一起、标点孤行的换行问题)。
+ */
+export function parseSummary(summary: string): SummaryParts {
+    const raw = (summary || '').trim();
+    const grab = (emojis: string[]): string | undefined => {
+        // 命中任一标记,截到下一个标记或结尾
+        const markers = ['💰', '💸', '😈', '最值', '最贵', '点评'];
+        for (const e of emojis) {
+            const i = raw.indexOf(e);
+            if (i === -1) continue;
+            let start = i + e.length;
+            // 跳过紧邻的"最值:/最贵:/点评:"与冒号空格
+            start = skipLabel(raw, start);
+            let end = raw.length;
+            for (const mk of markers) {
+                const j = raw.indexOf(mk, start + 1);
+                if (j !== -1 && j < end) end = j;
+            }
+            const seg = raw.slice(start, end).trim().replace(/^[:：\s]+/, '').trim();
+            if (seg) return seg;
+        }
+        return undefined;
+    };
+    return {
+        value: grab(['💰', '最值']),
+        expensive: grab(['💸', '最贵']),
+        roast: grab(['😈', '点评']),
+        raw,
+    };
+}
+
+function skipLabel(s: string, i: number): number {
+    const labels = ['最值', '最贵', '点评'];
+    for (const l of labels) {
+        if (s.startsWith(l, i)) { i += l.length; break; }
+    }
+    while (i < s.length && (s[i] === ':' || s[i] === '：' || s[i] === ' ')) i++;
+    return i;
+}
+
 export interface Highlights {
     worst?: { name: string; premium: number };   // 最坑(溢价最高)
     best?: { name: string; ratio: number };       // 最值(倍数最低)
