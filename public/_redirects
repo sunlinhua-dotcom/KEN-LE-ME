@@ -1,5 +1,0 @@
-# Cloudflare Pages 路由回退
-# 真实静态页(/、/result、/camera 对应 index.html / result.html / camera.html)
-# 由 CF Pages 的 cleanUrls 直接命中;仅未匹配到文件的路径回退到首页,
-# 交给 expo-router 客户端路由处理(等价于 serve -s 的 single-page 行为)。
-/*    /index.html    200
