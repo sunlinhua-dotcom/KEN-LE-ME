@@ -1,4 +1,3 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import * as FileSystem from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { Platform } from 'react-native';
@@ -239,7 +238,8 @@ export async function analyzeWineList(imageUris: string[]): Promise<AnalysisResu
             return processItems(result);
 
         } else {
-            // Fallback for native Google keys
+            // Fallback for native Google keys —— 动态 import,避免 SDK 进首屏主包
+            const { GoogleGenerativeAI } = await import("@google/generative-ai");
             const genAI = new GoogleGenerativeAI(API_KEY);
             const model = genAI.getGenerativeModel({ model: MODEL });
 

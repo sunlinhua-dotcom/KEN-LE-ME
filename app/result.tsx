@@ -4,8 +4,7 @@ import PriceBars from '@/components/svg/PriceBars';
 import Seal from '@/components/svg/Seal';
 import Stars from '@/components/svg/Stars';
 import Reveal from '@/components/anim/Reveal';
-import AuroraField from '@/components/three/AuroraField';
-import ScanTunnel from '@/components/three/ScanTunnel';
+import Deferred from '@/components/three/Deferred';
 import { KC, SerifNum } from '@/constants/theme';
 import { formatPrice, getItemTier, getOverallVerdict } from '@/utils/format';
 import * as Clipboard from 'expo-clipboard';
@@ -13,13 +12,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import * as Speech from 'expo-speech';
-import { ArrowLeft, Check, Share2, Square, Volume2 } from 'lucide-react-native';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Check, Share2, Square, Volume2 } from '@/components/svg/Icons';
+import React, { lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import { AnalysisResult, analyzeWineList } from '../utils/gemini';
+
+// Three.js 场景代码分割:独立 chunk,不进首屏主包
+const Scene = lazy(() => import('@/components/three/Scenes'));
 
 const SCAN_STEPS = [
     { at: 0, label: '识别酒标与菜单文字' },
@@ -160,7 +162,7 @@ export default function ResultScreen() {
     if (loading) {
         return (
             <View className="flex-1 bg-void">
-                <ScanTunnel />
+                <Deferred><Scene name="scan" /></Deferred>
                 <SafeAreaView className="flex-1 items-center justify-center px-10">
                     {/* 计时 */}
                     <Reveal dy={8} className="items-center">
@@ -244,7 +246,7 @@ export default function ResultScreen() {
     /* ════════ 结果态:极光报告 ════════ */
     return (
         <View className="flex-1 bg-void">
-            <AuroraField />
+            <Deferred><Scene name="aurora" /></Deferred>
 
             <SafeAreaView className="flex-1">
                 {/* ── 顶栏 ── */}

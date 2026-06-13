@@ -1,18 +1,21 @@
 import Logo from '@/components/svg/Logo';
 import Reveal from '@/components/anim/Reveal';
-import WineUniverse from '@/components/three/WineUniverse';
+import Deferred from '@/components/three/Deferred';
 import { KC } from '@/constants/theme';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { ArrowRight, Camera, Image as ImageIcon, Plus, X } from 'lucide-react-native';
-import { useCallback, useEffect, useState } from 'react';
+import { ArrowRight, Camera, ImageIcon, Plus, X } from '@/components/svg/Icons';
+import { lazy, useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Platform, ScrollView, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
+
+// Three.js 场景代码分割:打成独立 chunk,首屏主包不含 Three.js
+const Scene = lazy(() => import('@/components/three/Scenes'));
 
 const CAPABILITIES = ['红酒', '雪茄', '酒单', '菜单', '小票', '外卖截图'];
 
@@ -221,8 +224,18 @@ export default function HomeScreen() {
         <View className="flex-1 bg-void">
             <StatusBar barStyle="light-content" />
 
-            {/* ── Three.js 酒杯宇宙(web)/ 辉光星空(native) ── */}
-            <WineUniverse paused={scenePaused} />
+            {/* 首屏即时底色(Three.js 加载前不留白) */}
+            <LinearGradient
+                colors={['#060410', '#170A26', '#0E0818', '#060410']}
+                locations={[0, 0.4, 0.75, 1]}
+                pointerEvents="none"
+                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            />
+
+            {/* ── Three.js 酒杯宇宙(web)/ 辉光星空(native),首屏后延迟加载 ── */}
+            <Deferred>
+                <Scene name="wine" paused={scenePaused} />
+            </Deferred>
 
             {/* 底部可读性渐变 */}
             <LinearGradient

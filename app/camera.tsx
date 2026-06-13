@@ -4,7 +4,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { Image as ImageIcon, RotateCcw, X } from 'lucide-react-native';
+import { ImageIcon, RotateCcw, X } from '@/components/svg/Icons';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, StatusBar, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
