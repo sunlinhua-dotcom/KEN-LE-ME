@@ -6,7 +6,7 @@ import Stars from '@/components/svg/Stars';
 import Reveal from '@/components/anim/Reveal';
 import Deferred from '@/components/three/Deferred';
 import { KC, SerifNum } from '@/constants/theme';
-import { formatPrice, getItemTier, getOverallVerdict } from '@/utils/format';
+import { formatPrice, getCardTheme, getHighlights, getItemTier, getOverallVerdict } from '@/utils/format';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -30,8 +30,31 @@ const SCAN_STEPS = [
     { at: 12, label: '生成毒舌点评' },
 ];
 
+// 演示数据(?demo=pit / ?demo=quality):免调 API 预览四档卡片配色与排版
+const DEMO_DATA: Record<string, AnalysisResult> = {
+    pit: {
+        type: 'menu',
+        summary: '💰最值:长城天赋,店里卖得跟电商差不多,良心。 💸最贵:这瓶 1499 的奔富比电商贵出一只 iPhone。 😈点评:这酒单看着唬人,实则一半靠"看不懂"的进口名收智商税,懂行的直接点长城走人。',
+        items: [
+            { name: '奔富 BIN389 设拉子赤霞珠', menuPrice: 1499, onlinePrice: 558, ratio: 2.69, diff: 941, characteristics: '澳洲名庄,商务宴请硬通货,但餐厅加价最狠', rating: 8.6 },
+            { name: '拉菲传奇波尔多', menuPrice: 880, onlinePrice: 328, ratio: 2.68, diff: 552, characteristics: '入门级"拉菲",名字唬人,品质普通', rating: 7.2 },
+            { name: '黄尾袋鼠西拉', menuPrice: 188, onlinePrice: 79, ratio: 2.38, diff: 109, characteristics: '澳洲走量餐酒,果味直接,日常口粮', rating: 6.8 },
+            { name: '长城天赋赤霞珠', menuPrice: 268, onlinePrice: 218, ratio: 1.23, diff: 50, characteristics: '国产老牌,价格透明,宴客不踩雷', rating: 7.5 },
+        ],
+    },
+    quality: {
+        type: 'single',
+        summary: '💰最值:这几瓶里巴黎之花最实在。 💸最贵:不用说也是黑桃 A。 😈点评:桌上这几瓶搭配挺讲究,有面子也喝得下去,识货。',
+        items: [
+            { name: 'Armand de Brignac 黑桃 A 香槟', menuPrice: null, onlinePrice: 4280, ratio: null, diff: null, characteristics: '夜店顶流,金瓶气场全开,口感其实细腻', rating: 9.1 },
+            { name: '唐培里侬香槟王 2013', menuPrice: null, onlinePrice: 1880, ratio: null, diff: null, characteristics: '香槟标杆,矿物感强,陈年潜力佳', rating: 8.9 },
+            { name: '巴黎之花美丽时光', menuPrice: null, onlinePrice: 1280, ratio: null, diff: null, characteristics: '花卉瓶身,优雅花香,送礼有面', rating: 8.4 },
+        ],
+    },
+};
+
 export default function ResultScreen() {
-    const { imageUri, imageUris } = useLocalSearchParams<{ imageUri?: string; imageUris?: string }>();
+    const { imageUri, imageUris, demo } = useLocalSearchParams<{ imageUri?: string; imageUris?: string; demo?: string }>();
     const router = useRouter();
     const [loading, setLoading] = useState(true);
     const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -40,6 +63,13 @@ export default function ResultScreen() {
     const [isSpeaking, setIsSpeaking] = useState(false);
 
     useEffect(() => {
+        // 演示模式:免调 API 直接渲染样例数据
+        if (demo && DEMO_DATA[demo]) {
+            setResult(DEMO_DATA[demo]);
+            setLoading(false);
+            return;
+        }
+
         let uris: string[] = [];
         if (imageUris) {
             try {
@@ -65,10 +95,11 @@ export default function ResultScreen() {
         } else {
             setLoading(false);
         }
-    }, [imageUri, imageUris]);
+    }, [imageUri, imageUris, demo]);
 
     // ── 整单结论 ──
     const verdict = useMemo(() => (result ? getOverallVerdict(result) : null), [result]);
+    const highlights = useMemo(() => (result ? getHighlights(result) : null), [result]);
     const displayItems = useMemo(() => {
         if (!result?.items) return [];
         if (verdict?.mode === 'quality') {
@@ -243,10 +274,18 @@ export default function ResultScreen() {
 
     if (!result) return <View className="flex-1 bg-void" />;
 
-    /* ════════ 结果态:极光报告 ════════ */
+    /* ════════ 结果态:判决星海报告 ════════ */
+    const tint = verdict?.tier.color || KC.crimson;
     return (
         <View className="flex-1 bg-void">
-            <Deferred><Scene name="aurora" /></Deferred>
+            <Deferred><Scene name="verdict" tint={tint} score={verdict?.score ?? 50} /></Deferred>
+            {/* 内容可读性:底部加深 */}
+            <LinearGradient
+                colors={['rgba(6,4,16,0.15)', 'rgba(6,4,16,0.55)', 'rgba(6,4,16,0.82)']}
+                locations={[0, 0.55, 1]}
+                pointerEvents="none"
+                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            />
 
             <SafeAreaView className="flex-1">
                 {/* ── 顶栏 ── */}
@@ -283,47 +322,94 @@ export default function ResultScreen() {
                         {verdict && (
                             <Reveal>
                                 <View
-                                    className="rounded-3xl border px-5 pt-5 pb-4 mb-4 overflow-hidden"
-                                    style={{ backgroundColor: 'rgba(16,10,28,0.78)', borderColor: `${verdict.tier.color}55` }}
+                                    className="rounded-[28px] border px-5 pt-5 pb-5 mb-3.5 overflow-hidden"
+                                    style={{ backgroundColor: 'rgba(12,8,22,0.74)', borderColor: `${tint}66` }}
                                 >
-                                    {/* 顶部色辉 */}
+                                    {/* 顶部色辉 + 边缘高光 */}
                                     <LinearGradient
-                                        colors={[`${verdict.tier.color}30`, 'rgba(0,0,0,0)']}
-                                        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 90 }}
+                                        colors={[`${tint}38`, 'rgba(0,0,0,0)']}
+                                        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 110 }}
                                     />
+                                    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: tint, opacity: 0.9 }} />
+
                                     <View className="flex-row items-center">
                                         <Gauge
                                             value={verdict.score}
-                                            color={verdict.tier.color}
+                                            color={tint}
                                             label={verdict.mode === 'pit' ? '坑指数' : '品质分'}
-                                            size={146}
+                                            size={150}
+                                            unit="/100"
                                         />
-                                        <View className="flex-1 ml-4">
-                                            <Text style={{ color: verdict.tier.color }} className="text-2xl font-black tracking-wide">
+                                        <View className="flex-1 ml-3">
+                                            <View className="self-start px-2.5 py-1 rounded-full mb-1.5" style={{ backgroundColor: `${tint}22`, borderWidth: 1, borderColor: `${tint}55` }}>
+                                                <Text style={{ color: tint }} className="text-[10px] font-black tracking-widest">
+                                                    {verdict.mode === 'pit' ? '整单结论' : '整体评价'}
+                                                </Text>
+                                            </View>
+                                            <Text style={{ color: tint }} className="text-[26px] font-black tracking-wide leading-tight">
                                                 {verdict.tier.emoji} {verdict.tier.label}
                                             </Text>
-                                            <Text className="text-xs mt-1.5 leading-5" style={{ color: KC.textMid }}>
+                                            <Text className="text-xs mt-1 leading-5" style={{ color: KC.textMid }}>
                                                 {verdict.tier.line}
                                             </Text>
-                                            <View className="flex-row mt-3">
-                                                <View className="mr-5">
-                                                    <Text className="text-[10px]" style={{ color: KC.textLow }}>鉴定款数</Text>
-                                                    <Text className="text-base font-bold" style={{ color: KC.textHi, fontFamily: SerifNum }}>
-                                                        {result.items?.length || 0}
-                                                    </Text>
-                                                </View>
-                                                {verdict.mode === 'pit' && verdict.totalPremium > 0 && (
-                                                    <View>
-                                                        <Text className="text-[10px]" style={{ color: KC.textLow }}>整单总溢价</Text>
-                                                        <Text className="text-base font-bold" style={{ color: KC.blaze, fontFamily: SerifNum }}>
-                                                            ¥{formatPrice(verdict.totalPremium)}
-                                                        </Text>
-                                                    </View>
-                                                )}
-                                            </View>
                                         </View>
                                     </View>
+
+                                    {/* 关键数字栏 */}
+                                    <View className="flex-row mt-4 pt-3.5" style={{ borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+                                        <View className="flex-1 items-center">
+                                            <Text className="text-[10px] mb-0.5" style={{ color: KC.textLow }}>鉴定款数</Text>
+                                            <Text className="text-lg font-bold" style={{ color: KC.textHi, fontFamily: SerifNum }}>
+                                                {result.items?.length || 0}
+                                            </Text>
+                                        </View>
+                                        <View className="w-px" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                                        {verdict.mode === 'pit' ? (
+                                            <>
+                                                <View className="flex-1 items-center">
+                                                    <Text className="text-[10px] mb-0.5" style={{ color: KC.textLow }}>整单总溢价</Text>
+                                                    <Text className="text-lg font-bold num" style={{ color: KC.blaze, fontFamily: SerifNum }}>
+                                                        ¥{formatPrice(verdict.totalPremium)}
+                                                    </Text>
+                                                </View>
+                                                <View className="w-px" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                                                <View className="flex-1 items-center">
+                                                    <Text className="text-[10px] mb-0.5" style={{ color: KC.textLow }}>平均溢价</Text>
+                                                    <Text className="text-lg font-bold" style={{ color: KC.gold, fontFamily: SerifNum }}>
+                                                        {highlights?.avgRatio ? `${highlights.avgRatio.toFixed(1)}x` : '—'}
+                                                    </Text>
+                                                </View>
+                                            </>
+                                        ) : (
+                                            <View className="flex-1 items-center">
+                                                <Text className="text-[10px] mb-0.5" style={{ color: KC.textLow }}>最高评分</Text>
+                                                <Text className="text-lg font-bold" style={{ color: KC.gold, fontFamily: SerifNum }}>
+                                                    {highlights?.topRated ? highlights.topRated.rating.toFixed(1) : '—'}
+                                                </Text>
+                                            </View>
+                                        )}
+                                    </View>
                                 </View>
+                            </Reveal>
+                        )}
+
+                        {/* ── 关键发现(最坑 / 最值)── */}
+                        {verdict?.mode === 'pit' && (highlights?.worst || highlights?.best) && (
+                            <Reveal delay={60} className="flex-row mb-3.5" style={{ gap: 10 }}>
+                                {highlights?.worst && (
+                                    <View className="flex-1 rounded-2xl border px-3.5 py-3" style={{ backgroundColor: 'rgba(46,13,16,0.6)', borderColor: 'rgba(255,90,95,0.3)' }}>
+                                        <Text className="text-[10px] font-bold tracking-wider mb-1" style={{ color: KC.blaze }}>💣 最坑</Text>
+                                        <Text className="text-[12px] font-bold leading-4" style={{ color: KC.textHi }} numberOfLines={2}>{highlights.worst.name}</Text>
+                                        <Text className="text-[11px] mt-1 num" style={{ color: KC.blaze, fontFamily: SerifNum }}>多赚 ¥{formatPrice(highlights.worst.premium)}</Text>
+                                    </View>
+                                )}
+                                {highlights?.best && (
+                                    <View className="flex-1 rounded-2xl border px-3.5 py-3" style={{ backgroundColor: 'rgba(14,42,33,0.6)', borderColor: 'rgba(46,230,168,0.3)' }}>
+                                        <Text className="text-[10px] font-bold tracking-wider mb-1" style={{ color: KC.mint }}>✅ 最值</Text>
+                                        <Text className="text-[12px] font-bold leading-4" style={{ color: KC.textHi }} numberOfLines={2}>{highlights.best.name}</Text>
+                                        <Text className="text-[11px] mt-1" style={{ color: KC.mint, fontFamily: SerifNum }}>仅 {highlights.best.ratio.toFixed(1)}x 溢价</Text>
+                                    </View>
+                                )}
                             </Reveal>
                         )}
 
@@ -367,69 +453,97 @@ export default function ResultScreen() {
                             </Reveal>
                         )}
 
-                        {/* ── 酒款卡片 ── */}
+                        {/* ── 酒款卡片(按档位配色)── */}
                         {displayItems.map((wine, index) => {
                             const tier = getItemTier(wine);
+                            const theme = getCardTheme(tier);
+                            const isKingOfPits = verdict?.mode === 'pit' && index === 0 && tier.key === 'blaze';
                             return (
                                 <Reveal key={`${wine.name}-${index}`} delay={200 + Math.min(index, 8) * 70}>
                                     <View
-                                        className="rounded-3xl border p-5 mb-3.5 overflow-hidden"
-                                        style={{ backgroundColor: 'rgba(18,12,30,0.82)', borderColor: 'rgba(255,255,255,0.10)' }}
+                                        className="rounded-[26px] border mb-3.5 overflow-hidden"
+                                        style={{ borderColor: theme.border, borderWidth: isKingOfPits ? 1.5 : 1 }}
                                     >
-                                        {/* 印章 */}
-                                        <View pointerEvents="none" style={{ position: 'absolute', top: 10, right: 10, opacity: 0.92 }}>
-                                            <Seal label={tier.label} color={tier.color} sub={wine.ratio ? `${wine.ratio.toFixed(1)}x` : undefined} size={58} />
-                                        </View>
+                                        {/* 玻璃染色背景 */}
+                                        <LinearGradient colors={theme.bg} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+                                        {/* 顶部色辉 */}
+                                        <LinearGradient colors={[theme.glow, 'rgba(0,0,0,0)']} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 70 }} />
+                                        {/* 左侧档位强调条 */}
+                                        <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 4, backgroundColor: theme.bar }} />
 
-                                        {/* 名称行 */}
-                                        <View className="flex-row items-start">
-                                            <Medal rank={index + 1} size={32} />
-                                            <View className="flex-1 ml-3 mr-16">
-                                                <Text className="font-black text-[17px] leading-snug" style={{ color: KC.textHi }}>
-                                                    {wine.name}
-                                                </Text>
-                                                <View className="flex-row items-center mt-1.5">
-                                                    <Stars rating={wine.rating || 0} size={12} />
-                                                    <Text className="ml-2 text-xs font-bold" style={{ color: KC.gold, fontFamily: SerifNum }}>
-                                                        {(wine.rating || 0).toFixed(1)}
-                                                    </Text>
-                                                </View>
-                                            </View>
-                                        </View>
-
-                                        {/* 价格对比 */}
-                                        {(wine.menuPrice || wine.onlinePrice) && (
-                                            <View className="mt-4">
-                                                <PriceBars menuPrice={wine.menuPrice} onlinePrice={wine.onlinePrice} />
+                                        {/* 坑王缎带 */}
+                                        {isKingOfPits && (
+                                            <View className="absolute top-0 left-0 px-3 py-1 rounded-br-2xl" style={{ backgroundColor: KC.blaze }}>
+                                                <Text className="text-[10px] font-black tracking-widest" style={{ color: '#1A0407' }}>👑 本单坑王</Text>
                                             </View>
                                         )}
 
-                                        {/* 溢价结论 */}
-                                        {wine.diff !== null && wine.diff !== undefined && (
-                                            <View className="flex-row items-center mt-2.5">
+                                        <View className="p-5" style={{ paddingTop: isKingOfPits ? 26 : 20 }}>
+                                            {/* 印章 */}
+                                            <View pointerEvents="none" style={{ position: 'absolute', top: isKingOfPits ? 26 : 12, right: 12, opacity: 0.95 }}>
+                                                <Seal label={tier.label} color={tier.color} sub={wine.ratio ? `${wine.ratio.toFixed(1)}x` : undefined} size={56} />
+                                            </View>
+
+                                            {/* 名称行 */}
+                                            <View className="flex-row items-start">
+                                                <Medal rank={index + 1} size={32} />
+                                                <View className="flex-1 ml-3 mr-16">
+                                                    <Text className="font-black text-[17px] leading-snug" style={{ color: KC.textHi }}>
+                                                        {wine.name}
+                                                    </Text>
+                                                    <View className="flex-row items-center mt-1.5">
+                                                        <Stars rating={wine.rating || 0} size={12} />
+                                                        <Text className="ml-2 text-xs font-bold" style={{ color: KC.gold, fontFamily: SerifNum }}>
+                                                            {(wine.rating || 0).toFixed(1)}
+                                                        </Text>
+                                                    </View>
+                                                </View>
+                                            </View>
+
+                                            {/* 价格对比 */}
+                                            {(wine.menuPrice || wine.onlinePrice) && (
+                                                <View className="mt-4">
+                                                    <PriceBars menuPrice={wine.menuPrice} onlinePrice={wine.onlinePrice} />
+                                                </View>
+                                            )}
+
+                                            {/* 溢价结论 */}
+                                            {wine.diff !== null && wine.diff !== undefined && (
+                                                <View className="flex-row items-center mt-2.5 flex-wrap">
+                                                    <View
+                                                        className="px-3 py-1 rounded-full mr-2"
+                                                        style={{ backgroundColor: wine.diff > 0 ? 'rgba(255,90,95,0.16)' : 'rgba(46,230,168,0.15)' }}
+                                                    >
+                                                        <Text className="text-xs font-bold num" style={{ color: wine.diff > 0 ? KC.blaze : KC.mint }}>
+                                                            {wine.diff > 0 ? `商家多赚 ¥${formatPrice(wine.diff)}` : `低于电商 ¥${formatPrice(Math.abs(wine.diff))}`}
+                                                        </Text>
+                                                    </View>
+                                                    {wine.ratio && (
+                                                        <Text className="text-[11px] num" style={{ color: KC.textLow }}>店价 ≈ {wine.ratio.toFixed(1)} 倍电商</Text>
+                                                    )}
+                                                </View>
+                                            )}
+
+                                            {/* 特色 */}
+                                            {!!wine.characteristics && (
                                                 <View
-                                                    className="px-3 py-1 rounded-full"
-                                                    style={{ backgroundColor: wine.diff > 0 ? 'rgba(255,90,95,0.14)' : 'rgba(46,230,168,0.13)' }}
+                                                    className="rounded-xl px-3.5 py-3 mt-3.5"
+                                                    style={{ backgroundColor: 'rgba(0,0,0,0.22)' }}
                                                 >
-                                                    <Text className="text-xs font-bold" style={{ color: wine.diff > 0 ? KC.blaze : KC.mint }}>
-                                                        {wine.diff > 0 ? `商家多赚 ¥${formatPrice(wine.diff)}` : `低于电商 ¥${formatPrice(Math.abs(wine.diff))}`}
+                                                    <Text className="text-[13px] leading-5" style={{ color: KC.textMid }}>
+                                                        🍷 {wine.characteristics}
                                                     </Text>
                                                 </View>
-                                                <Text className="ml-2 text-[11px]" style={{ color: KC.textLow }}>{tier.line}</Text>
-                                            </View>
-                                        )}
+                                            )}
 
-                                        {/* 特色 */}
-                                        {!!wine.characteristics && (
-                                            <View
-                                                className="rounded-xl px-3.5 py-3 mt-3.5 border"
-                                                style={{ backgroundColor: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.07)' }}
-                                            >
-                                                <Text className="text-[13px] leading-5" style={{ color: KC.textMid }}>
-                                                    🍷 {wine.characteristics}
+                                            {/* 可执行建议 */}
+                                            <View className="flex-row items-center mt-3">
+                                                <View className="w-1.5 h-1.5 rounded-full mr-2" style={{ backgroundColor: theme.accent }} />
+                                                <Text className="text-[12px] font-bold" style={{ color: theme.accent }}>
+                                                    {tier.emoji} {theme.advice}
                                                 </Text>
                                             </View>
-                                        )}
+                                        </View>
                                     </View>
                                 </Reveal>
                             );

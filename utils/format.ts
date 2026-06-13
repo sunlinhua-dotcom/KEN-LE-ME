@@ -26,6 +26,66 @@ export function getItemTier(item: WineItem): VerdictTier {
     return { key: 'blaze', label: '巨坑', emoji: '💣', color: KC.blaze, line: '溢价离谱,慎点' };
 }
 
+export interface CardTheme {
+    /** 卡片背景渐变(深色染色玻璃) */
+    bg: [string, string];
+    border: string;
+    /** 顶部色辉 */
+    glow: string;
+    accent: string;
+    /** 左侧强调竖条 */
+    bar: string;
+    /** 一句可执行建议 */
+    advice: string;
+}
+
+const CARD_THEME: Record<VerdictTier['key'], Omit<CardTheme, 'advice'>> = {
+    mint: { bg: ['rgba(14,42,33,0.80)', 'rgba(8,20,17,0.86)'], border: 'rgba(46,230,168,0.34)', glow: 'rgba(46,230,168,0.20)', accent: KC.mint, bar: KC.mint },
+    amber: { bg: ['rgba(44,33,13,0.80)', 'rgba(22,16,8,0.86)'], border: 'rgba(255,194,75,0.30)', glow: 'rgba(255,194,75,0.18)', accent: KC.amber, bar: KC.amber },
+    blaze: { bg: ['rgba(46,13,16,0.84)', 'rgba(24,8,10,0.88)'], border: 'rgba(255,90,95,0.36)', glow: 'rgba(255,90,95,0.24)', accent: KC.blaze, bar: KC.blaze },
+    scan: { bg: ['rgba(13,27,46,0.82)', 'rgba(8,14,24,0.86)'], border: 'rgba(111,179,255,0.30)', glow: 'rgba(111,179,255,0.18)', accent: KC.scan, bar: KC.scan },
+};
+
+const ADVICE: Record<VerdictTier['key'], string> = {
+    mint: '推荐点这款,性价比高',
+    amber: '可以点,价格在合理区间',
+    blaze: '建议避开,或自带更划算',
+    scan: '仅作品质鉴定参考',
+};
+
+/** 每张酒卡的配色主题 + 可执行建议 */
+export function getCardTheme(tier: VerdictTier): CardTheme {
+    return { ...CARD_THEME[tier.key], advice: ADVICE[tier.key] };
+}
+
+export interface Highlights {
+    worst?: { name: string; premium: number };   // 最坑(溢价最高)
+    best?: { name: string; ratio: number };       // 最值(倍数最低)
+    topRated?: { name: string; rating: number };  // 评分最高
+    avgRatio?: number;                            // 平均溢价倍数
+}
+
+/** 关键发现:供结果页"一眼看懂"的摘要 */
+export function getHighlights(result: AnalysisResult): Highlights {
+    const items = result.items || [];
+    const priced = items.filter(i => i.menuPrice && i.onlinePrice && i.ratio);
+    const h: Highlights = {};
+
+    if (priced.length) {
+        const worst = priced.reduce((a, b) => ((b.diff || 0) > (a.diff || 0) ? b : a));
+        if ((worst.diff || 0) > 0) h.worst = { name: worst.name, premium: worst.diff || 0 };
+        const best = priced.reduce((a, b) => ((b.ratio || 99) < (a.ratio || 99) ? b : a));
+        h.best = { name: best.name, ratio: best.ratio || 0 };
+        h.avgRatio = priced.reduce((s, i) => s + (i.ratio || 1), 0) / priced.length;
+    }
+    const rated = items.filter(i => typeof i.rating === 'number');
+    if (rated.length) {
+        const top = rated.reduce((a, b) => (b.rating > a.rating ? b : a));
+        h.topRated = { name: top.name, rating: top.rating };
+    }
+    return h;
+}
+
 export interface OverallVerdict {
     /** 0–100,越高越坑;single 模式下为品质分(越高越好) */
     score: number;
