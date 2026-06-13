@@ -69,7 +69,7 @@ function CausticSea({ color }: { color: THREE.Color }) {
 }
 
 /* ── 判决水晶:多面宝石 + 菲涅尔描边发光 ── */
-function VerdictCrystal({ color, score }: { color: THREE.Color; score: number }) {
+function VerdictCrystal({ color, score, spin = 0.32 }: { color: THREE.Color; score: number; spin?: number }) {
     const group = useRef<THREE.Group>(null);
     const geo = useMemo(() => {
         const g = new THREE.IcosahedronGeometry(1, 1).toNonIndexed();
@@ -102,9 +102,11 @@ function VerdictCrystal({ color, score }: { color: THREE.Color; score: number })
     useFrame(({ clock }) => {
         const t = clock.elapsedTime;
         if (group.current) {
-            group.current.rotation.y = t * 0.32;
+            group.current.rotation.y = t * spin;
             group.current.rotation.x = Math.sin(t * 0.4) * 0.25;
-            group.current.position.y = 1.55 + Math.sin(t * 0.7) * 0.12;
+            // 狂暴档(spin 大)轻微脉冲抖动
+            const pulse = spin > 0.45 ? Math.sin(t * 9) * 0.04 : 0;
+            group.current.position.y = 1.55 + Math.sin(t * 0.7) * 0.12 + pulse;
         }
     });
     return (
@@ -120,7 +122,7 @@ function VerdictCrystal({ color, score }: { color: THREE.Color; score: number })
 }
 
 /* ── 视差碎晶:小宝石缓慢翻滚 ── */
-function Shards({ color, count = 7 }: { color: THREE.Color; count?: number }) {
+function Shards({ color, count = 7, spinMul = 1 }: { color: THREE.Color; count?: number; spinMul?: number }) {
     const group = useRef<THREE.Group>(null);
     const items = useMemo(() => {
         const arr: { pos: [number, number, number]; s: number; spin: number; axis: THREE.Vector3 }[] = [];
@@ -145,7 +147,7 @@ function Shards({ color, count = 7 }: { color: THREE.Color; count?: number }) {
         const t = clock.elapsedTime;
         refs.current.forEach((m, i) => {
             if (!m) return;
-            m.rotateOnAxis(items[i].axis, dt * items[i].spin);
+            m.rotateOnAxis(items[i].axis, dt * items[i].spin * spinMul);
             m.position.y = items[i].pos[1] + Math.sin(t * 0.6 + i) * 0.18;
         });
         if (group.current) group.current.rotation.y = t * 0.05;
@@ -162,7 +164,7 @@ function Shards({ color, count = 7 }: { color: THREE.Color; count?: number }) {
 }
 
 /* ── 上升火花粒子 ── */
-function Embers({ color, count = 90 }: { color: THREE.Color; count?: number }) {
+function Embers({ color, count = 90, speedMul = 1 }: { color: THREE.Color; count?: number; speedMul?: number }) {
     const ref = useRef<THREE.Points>(null);
     const { positions, sizes, speeds } = useMemo(() => {
         const positions = new Float32Array(count * 3);
@@ -202,7 +204,7 @@ function Embers({ color, count = 90 }: { color: THREE.Color; count?: number }) {
         const pos = ref.current?.geometry.getAttribute('position') as THREE.BufferAttribute | undefined;
         if (!pos) return;
         for (let i = 0; i < count; i++) {
-            let y = pos.getY(i) + speeds[i] * dt;
+            let y = pos.getY(i) + speeds[i] * dt * speedMul;
             if (y > 5) y = -3;
             pos.setY(i, y);
             pos.setX(i, pos.getX(i) + Math.sin(clock.elapsedTime * 0.6 + i) * 0.002);
@@ -216,6 +218,63 @@ function Embers({ color, count = 90 }: { color: THREE.Color; count?: number }) {
                 <bufferAttribute attach="attributes-aSize" args={[sizes, 1]} />
             </bufferGeometry>
         </points>
+    );
+}
+
+/* ── 巨坑专属:危险冲击波环(从晶体向外脉冲扩散) ── */
+function Shockwave({ color }: { color: THREE.Color }) {
+    const refs = useRef<(THREE.Mesh | null)[]>([]);
+    const RINGS = 3;
+    return (
+        <group position={[0, 1.55, 0]}>
+            {Array.from({ length: RINGS }).map((_, i) => (
+                <ShockRing key={i} color={color} phase={i / RINGS} ref={(el: THREE.Mesh | null) => { refs.current[i] = el; }} />
+            ))}
+        </group>
+    );
+}
+const ShockRing = React.forwardRef<THREE.Mesh, { color: THREE.Color; phase: number }>(({ color, phase }, ref) => {
+    const mat = useRef<THREE.MeshBasicMaterial>(null);
+    useFrame(({ clock }) => {
+        const t = (clock.elapsedTime * 0.5 + phase) % 1;
+        const m = (ref as React.MutableRefObject<THREE.Mesh | null>).current;
+        if (m) {
+            const s = 0.4 + t * 3.4;
+            m.scale.set(s, s, s);
+            m.rotation.x = Math.PI / 2;
+        }
+        if (mat.current) mat.current.opacity = (1 - t) * 0.5;
+    });
+    return (
+        <mesh ref={ref}>
+            <torusGeometry args={[1, 0.02, 8, 80]} />
+            <meshBasicMaterial ref={mat} color={color} transparent opacity={0.4} blending={THREE.AdditiveBlending} depthWrite={false} />
+        </mesh>
+    );
+});
+ShockRing.displayName = 'ShockRing';
+
+/* ── 鉴定专属:垂直扫描光束 ── */
+function ScanBeam({ color }: { color: THREE.Color }) {
+    const mat = useMemo(() => new THREE.ShaderMaterial({
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+        uniforms: { uTime: { value: 0 }, uColor: { value: color } },
+        vertexShader: /* glsl */`varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+        fragmentShader: /* glsl */`
+            uniform float uTime; uniform vec3 uColor; varying vec2 vUv;
+            void main(){
+                float sweep = fract(uTime * 0.12);
+                float line = smoothstep(0.04, 0.0, abs(vUv.y - sweep));
+                float grid = smoothstep(0.02, 0.0, abs(fract(vUv.x*10.0)-0.5)*0.06) * 0.15;
+                float edge = smoothstep(0.5,0.35,abs(vUv.x-0.5));
+                gl_FragColor = vec4(uColor, (line*0.5 + grid) * edge);
+            }`,
+    }), [color]);
+    useFrame(({ clock }) => { mat.uniforms.uTime.value = clock.elapsedTime; });
+    return (
+        <mesh material={mat} position={[0, 1.4, -0.5]}>
+            <planeGeometry args={[9, 7]} />
+        </mesh>
     );
 }
 
@@ -291,9 +350,19 @@ function Director({ children }: { children: React.ReactNode }) {
     return <group ref={rig}>{children}</group>;
 }
 
-export default function VerdictCosmos({ tint = '#FF2E7E', score = 50, paused = false }: { tint?: string; score?: number; paused?: boolean }) {
+type Mood = 'mint' | 'amber' | 'blaze' | 'scan';
+const MOODS: Record<Mood, { spin: number; ember: number; shard: number; special: 'none' | 'shock' | 'beam' | 'sparkle' }> = {
+    blaze: { spin: 0.6, ember: 1.9, shard: 1.7, special: 'shock' },   // 狂暴:快转 + 冲击波 + 急升火花
+    amber: { spin: 0.3, ember: 1.0, shard: 1.0, special: 'none' },    // 平稳
+    mint: { spin: 0.18, ember: 0.8, shard: 0.6, special: 'sparkle' }, // 舒缓:慢转 + 上升星火
+    scan: { spin: 0.22, ember: 0.9, shard: 0.8, special: 'beam' },    // 鉴定:扫描光束
+};
+
+export default function VerdictCosmos({ tint = '#FF2E7E', score = 50, paused = false, mood = 'blaze' }: { tint?: string; score?: number; paused?: boolean; mood?: Mood }) {
     const color = useMemo(() => new THREE.Color(tint), [tint]);
+    const gold = useMemo(() => new THREE.Color('#F5DFA6'), []);
     const isNarrow = typeof window !== 'undefined' && window.innerWidth < 480;
+    const m = MOODS[mood] || MOODS.blaze;
     void hexToRgbStr;
     return (
         <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
@@ -312,10 +381,13 @@ export default function VerdictCosmos({ tint = '#FF2E7E', score = 50, paused = f
                 <Nebula color={color} />
                 <StarField count={isNarrow ? 240 : 360} />
                 <CausticSea color={color} />
+                {m.special === 'beam' && <ScanBeam color={color} />}
                 <Director>
-                    <VerdictCrystal color={color} score={score} />
-                    <Shards color={color} count={isNarrow ? 5 : 7} />
-                    <Embers color={color} count={isNarrow ? 60 : 90} />
+                    <VerdictCrystal color={color} score={score} spin={m.spin} />
+                    <Shards color={color} count={isNarrow ? 5 : 7} spinMul={m.shard} />
+                    <Embers color={color} count={isNarrow ? 60 : 90} speedMul={m.ember} />
+                    {m.special === 'shock' && <Shockwave color={color} />}
+                    {m.special === 'sparkle' && <Embers color={gold} count={isNarrow ? 30 : 46} speedMul={0.5} />}
                 </Director>
             </Canvas>
         </View>

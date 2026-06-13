@@ -15,6 +15,8 @@ export interface WineItem {
     diff: number | null; // Added diff for price difference
     characteristics: string;
     rating: number;
+    /** 针对这一款的毒舌一句(≤20 字,中文,犀利) */
+    roast?: string;
 }
 
 export interface AnalysisResult {
@@ -128,7 +130,10 @@ export async function analyzeWineList(imageUris: string[]): Promise<AnalysisResu
          - Provide tasting notes/characteristics (in Chinese).
          - Provide a 1-10 rating.
          - Generate a witty, short, savage/funny summary in Chinese.
-      
+         - For EACH item, also write a "roast": a single savage/funny one-liner
+           in Chinese, MAX 20 characters, sharp and specific to THAT item
+           (mock the pricing if overpriced, praise if good value). No emoji inside roast.
+
       **Summary Guidelines:**
       - Structure: 💰Best Value -> 💸Most Expensive -> 😈Savage Review.
       - **NO NEWLINES** in the summary string. Use spaces.
@@ -140,11 +145,12 @@ export async function analyzeWineList(imageUris: string[]): Promise<AnalysisResu
         "items": [
           {
             "name": "Wine Name",
-            "menuPrice": number | null, 
-            "onlinePrice": number | null, 
-            "ratio": number | null, 
+            "menuPrice": number | null,
+            "onlinePrice": number | null,
+            "ratio": number | null,
             "characteristics": "Chinese description",
-            "rating": number 
+            "rating": number,
+            "roast": "中文毒舌一句,≤20字"
           }
         ]
       }

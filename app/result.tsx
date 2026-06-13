@@ -1,9 +1,9 @@
+import Reveal from '@/components/anim/Reveal';
 import Gauge from '@/components/svg/Gauge';
+import { ArrowLeft, Check, Share2, Square, Volume2 } from '@/components/svg/Icons';
 import Medal from '@/components/svg/Medal';
-import PriceBars from '@/components/svg/PriceBars';
 import Seal from '@/components/svg/Seal';
 import Stars from '@/components/svg/Stars';
-import Reveal from '@/components/anim/Reveal';
 import Deferred from '@/components/three/Deferred';
 import { KC, SerifNum } from '@/constants/theme';
 import { formatPrice, getCardTheme, getHighlights, getItemTier, getOverallVerdict } from '@/utils/format';
@@ -12,16 +12,20 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import * as Speech from 'expo-speech';
-import { ArrowLeft, Check, Share2, Square, Volume2 } from '@/components/svg/Icons';
-import React, { lazy, useEffect, useMemo, useRef, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
-import { AnalysisResult, analyzeWineList } from '../utils/gemini';
+import { AnalysisResult, analyzeWineList, WineItem } from '../utils/gemini';
 
 // Three.js 场景代码分割:独立 chunk,不进首屏主包
 const Scene = lazy(() => import('@/components/three/Scenes'));
+// 3D 表盘从同一 chunk 取(保持代码分割完整)
+const Gauge3D = lazy(() => import('@/components/three/Scenes').then(m => ({ default: m.Gauge3D })));
+
+// 内容列最大宽度(宽屏居中,避免卡片被拉伸)
+const SHELL = 600;
 
 const SCAN_STEPS = [
     { at: 0, label: '识别酒标与菜单文字' },
@@ -36,22 +40,62 @@ const DEMO_DATA: Record<string, AnalysisResult> = {
         type: 'menu',
         summary: '💰最值:长城天赋,店里卖得跟电商差不多,良心。 💸最贵:这瓶 1499 的奔富比电商贵出一只 iPhone。 😈点评:这酒单看着唬人,实则一半靠"看不懂"的进口名收智商税,懂行的直接点长城走人。',
         items: [
-            { name: '奔富 BIN389 设拉子赤霞珠', menuPrice: 1499, onlinePrice: 558, ratio: 2.69, diff: 941, characteristics: '澳洲名庄,商务宴请硬通货,但餐厅加价最狠', rating: 8.6 },
-            { name: '拉菲传奇波尔多', menuPrice: 880, onlinePrice: 328, ratio: 2.68, diff: 552, characteristics: '入门级"拉菲",名字唬人,品质普通', rating: 7.2 },
-            { name: '黄尾袋鼠西拉', menuPrice: 188, onlinePrice: 79, ratio: 2.38, diff: 109, characteristics: '澳洲走量餐酒,果味直接,日常口粮', rating: 6.8 },
-            { name: '长城天赋赤霞珠', menuPrice: 268, onlinePrice: 218, ratio: 1.23, diff: 50, characteristics: '国产老牌,价格透明,宴客不踩雷', rating: 7.5 },
+            { name: '奔富 BIN389 设拉子赤霞珠', menuPrice: 1499, onlinePrice: 558, ratio: 2.69, diff: 941, characteristics: '澳洲名庄,商务宴请硬通货,但餐厅加价最狠', rating: 8.6, roast: '这价够买俩瓶还多张电影票' },
+            { name: '拉菲传奇波尔多', menuPrice: 880, onlinePrice: 328, ratio: 2.68, diff: 552, characteristics: '入门级"拉菲",名字唬人,品质普通', rating: 7.2, roast: '蹭"拉菲"俩字,溢价翻倍' },
+            { name: '黄尾袋鼠西拉', menuPrice: 188, onlinePrice: 79, ratio: 2.38, diff: 109, characteristics: '澳洲走量餐酒,果味直接,日常口粮', rating: 6.8, roast: '超市常客,这儿翻倍卖' },
+            { name: '长城天赋赤霞珠', menuPrice: 268, onlinePrice: 218, ratio: 1.23, diff: 50, characteristics: '国产老牌,价格透明,宴客不踩雷', rating: 7.5, roast: '加价克制,这桌唯一良心' },
         ],
     },
     quality: {
         type: 'single',
         summary: '💰最值:这几瓶里巴黎之花最实在。 💸最贵:不用说也是黑桃 A。 😈点评:桌上这几瓶搭配挺讲究,有面子也喝得下去,识货。',
         items: [
-            { name: 'Armand de Brignac 黑桃 A 香槟', menuPrice: null, onlinePrice: 4280, ratio: null, diff: null, characteristics: '夜店顶流,金瓶气场全开,口感其实细腻', rating: 9.1 },
-            { name: '唐培里侬香槟王 2013', menuPrice: null, onlinePrice: 1880, ratio: null, diff: null, characteristics: '香槟标杆,矿物感强,陈年潜力佳', rating: 8.9 },
-            { name: '巴黎之花美丽时光', menuPrice: null, onlinePrice: 1280, ratio: null, diff: null, characteristics: '花卉瓶身,优雅花香,送礼有面', rating: 8.4 },
+            { name: 'Armand de Brignac 黑桃 A 香槟', menuPrice: null, onlinePrice: 4280, ratio: null, diff: null, characteristics: '夜店顶流,金瓶气场全开,口感其实细腻', rating: 9.1, roast: '气场拉满,钱包阵亡' },
+            { name: '唐培里侬香槟王 2013', menuPrice: null, onlinePrice: 1880, ratio: null, diff: null, characteristics: '香槟标杆,矿物感强,陈年潜力佳', rating: 8.9, roast: '懂行的都点它,不踩雷' },
+            { name: '巴黎之花美丽时光', menuPrice: null, onlinePrice: 1280, ratio: null, diff: null, characteristics: '花卉瓶身,优雅花香,送礼有面', rating: 8.4, roast: '颜值即正义,送礼真香' },
         ],
     },
 };
+
+/** 突出价格块:店内价大号 + 电商对比条(空白=溢价部分) */
+function PriceBlock({ wine }: { wine: WineItem }) {
+    const menu = wine.menuPrice;
+    const online = wine.onlinePrice;
+    if (!menu && !online) return null;
+
+    // 单品模式:仅电商参考价
+    if (!menu && online) {
+        return (
+            <View className="mt-4 flex-row items-end">
+                <View>
+                    <Text className="text-[10px] mb-0.5 tracking-wider" style={{ color: KC.textLow }}>电商参考价</Text>
+                    <Text className="num" style={{ color: KC.textHi, fontFamily: SerifNum, fontSize: 30, fontWeight: '800' }}>¥{formatPrice(online)}</Text>
+                </View>
+            </View>
+        );
+    }
+
+    const max = Math.max(menu || 0, online || 0) || 1;
+    const onlinePct = Math.max(6, ((online || 0) / max) * 100);
+    return (
+        <View className="mt-4">
+            <View className="flex-row items-end justify-between mb-2.5">
+                <View>
+                    <Text className="text-[10px] mb-0.5 tracking-wider" style={{ color: KC.textLow }}>店内价</Text>
+                    <Text className="num" style={{ color: KC.textHi, fontFamily: SerifNum, fontSize: 32, fontWeight: '800', lineHeight: 34 }}>¥{formatPrice(menu)}</Text>
+                </View>
+                <View className="items-end pb-1">
+                    <Text className="text-[10px] mb-0.5 tracking-wider" style={{ color: KC.textLow }}>电商参考</Text>
+                    <Text className="num" style={{ color: KC.mint, fontFamily: SerifNum, fontSize: 19, fontWeight: '700' }}>¥{formatPrice(online)}</Text>
+                </View>
+            </View>
+            {/* 对比条:绿色=电商价,剩余空白=餐厅溢价 */}
+            <View className="h-2.5 rounded-full overflow-hidden flex-row" style={{ backgroundColor: 'rgba(255,90,95,0.18)' }}>
+                <View style={{ width: `${onlinePct}%`, backgroundColor: KC.mint, borderRadius: 999 }} />
+            </View>
+        </View>
+    );
+}
 
 export default function ResultScreen() {
     const { imageUri, imageUris, demo } = useLocalSearchParams<{ imageUri?: string; imageUris?: string; demo?: string }>();
@@ -194,7 +238,7 @@ export default function ResultScreen() {
         return (
             <View className="flex-1 bg-void">
                 <Deferred><Scene name="scan" /></Deferred>
-                <SafeAreaView className="flex-1 items-center justify-center px-10">
+                <SafeAreaView className="flex-1 items-center justify-center px-10" style={{ width: '100%', maxWidth: SHELL, alignSelf: 'center' }}>
                     {/* 计时 */}
                     <Reveal dy={8} className="items-center">
                         <Text style={{ color: KC.textHi, fontSize: 54, fontWeight: '700', fontFamily: SerifNum, letterSpacing: -1 }}>
@@ -278,7 +322,7 @@ export default function ResultScreen() {
     const tint = verdict?.tier.color || KC.crimson;
     return (
         <View className="flex-1 bg-void">
-            <Deferred><Scene name="verdict" tint={tint} score={verdict?.score ?? 50} /></Deferred>
+            <Deferred><Scene name="verdict" tint={tint} score={verdict?.score ?? 50} mood={verdict?.tier.key} /></Deferred>
             {/* 内容可读性:底部加深 */}
             <LinearGradient
                 colors={['rgba(6,4,16,0.15)', 'rgba(6,4,16,0.55)', 'rgba(6,4,16,0.82)']}
@@ -288,8 +332,8 @@ export default function ResultScreen() {
             />
 
             <SafeAreaView className="flex-1">
-                {/* ── 顶栏 ── */}
-                <View className="px-5 py-3 flex-row justify-between items-center z-10">
+                {/* ── 顶栏(居中收窄)── */}
+                <View className="w-full self-center px-5 py-3 flex-row justify-between items-center z-10" style={{ maxWidth: SHELL }}>
                     <TouchableOpacity
                         onPress={() => router.dismissAll()}
                         className="w-10 h-10 rounded-full items-center justify-center"
@@ -314,10 +358,11 @@ export default function ResultScreen() {
 
                 <View ref={viewShotRef} collapsable={false} className="flex-1" style={{ backgroundColor: 'transparent' }}>
                     <ScrollView
-                        className="flex-1 px-4"
-                        contentContainerStyle={{ paddingBottom: 48, paddingTop: 6 }}
+                        className="flex-1"
+                        contentContainerStyle={{ paddingBottom: 48, paddingTop: 6, paddingHorizontal: 16, alignItems: 'center' }}
                         showsVerticalScrollIndicator={false}
                     >
+                      <View style={{ width: '100%', maxWidth: SHELL }}>
                         {/* ── 整单判决卡 ── */}
                         {verdict && (
                             <Reveal>
@@ -333,13 +378,15 @@ export default function ResultScreen() {
                                     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: tint, opacity: 0.9 }} />
 
                                     <View className="flex-row items-center">
-                                        <Gauge
-                                            value={verdict.score}
-                                            color={tint}
-                                            label={verdict.mode === 'pit' ? '坑指数' : '品质分'}
-                                            size={150}
-                                            unit="/100"
-                                        />
+                                        <Suspense fallback={<Gauge value={verdict.score} color={tint} label={verdict.mode === 'pit' ? '坑指数' : '品质分'} size={150} unit="/100" />}>
+                                            <Gauge3D
+                                                value={verdict.score}
+                                                color={tint}
+                                                label={verdict.mode === 'pit' ? '坑指数' : '品质分'}
+                                                size={150}
+                                                unit="/100"
+                                            />
+                                        </Suspense>
                                         <View className="flex-1 ml-3">
                                             <View className="self-start px-2.5 py-1 rounded-full mb-1.5" style={{ backgroundColor: `${tint}22`, borderWidth: 1, borderColor: `${tint}55` }}>
                                                 <Text style={{ color: tint }} className="text-[10px] font-black tracking-widest">
@@ -500,47 +547,50 @@ export default function ResultScreen() {
                                                 </View>
                                             </View>
 
-                                            {/* 价格对比 */}
-                                            {(wine.menuPrice || wine.onlinePrice) && (
-                                                <View className="mt-4">
-                                                    <PriceBars menuPrice={wine.menuPrice} onlinePrice={wine.onlinePrice} />
-                                                </View>
-                                            )}
+                                            {/* 突出价格 */}
+                                            <PriceBlock wine={wine} />
 
                                             {/* 溢价结论 */}
                                             {wine.diff !== null && wine.diff !== undefined && (
-                                                <View className="flex-row items-center mt-2.5 flex-wrap">
+                                                <View className="flex-row items-center mt-3 flex-wrap" style={{ gap: 8 }}>
                                                     <View
-                                                        className="px-3 py-1 rounded-full mr-2"
-                                                        style={{ backgroundColor: wine.diff > 0 ? 'rgba(255,90,95,0.16)' : 'rgba(46,230,168,0.15)' }}
+                                                        className="px-3 py-1.5 rounded-lg flex-row items-center"
+                                                        style={{ backgroundColor: wine.diff > 0 ? 'rgba(255,90,95,0.18)' : 'rgba(46,230,168,0.16)' }}
                                                     >
-                                                        <Text className="text-xs font-bold num" style={{ color: wine.diff > 0 ? KC.blaze : KC.mint }}>
-                                                            {wine.diff > 0 ? `商家多赚 ¥${formatPrice(wine.diff)}` : `低于电商 ¥${formatPrice(Math.abs(wine.diff))}`}
+                                                        <Text className="text-[13px] font-black num" style={{ color: wine.diff > 0 ? KC.blaze : KC.mint }}>
+                                                            {wine.diff > 0 ? `溢价 ¥${formatPrice(wine.diff)}` : `比电商低 ¥${formatPrice(Math.abs(wine.diff))}`}
                                                         </Text>
                                                     </View>
                                                     {wine.ratio && (
-                                                        <Text className="text-[11px] num" style={{ color: KC.textLow }}>店价 ≈ {wine.ratio.toFixed(1)} 倍电商</Text>
+                                                        <View className="px-2.5 py-1.5 rounded-lg" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
+                                                            <Text className="text-[12px] font-bold num" style={{ color: KC.gold }}>{wine.ratio.toFixed(1)}× 电商价</Text>
+                                                        </View>
                                                     )}
+                                                </View>
+                                            )}
+
+                                            {/* 毒舌一句 */}
+                                            {!!wine.roast && (
+                                                <View className="flex-row items-start mt-3.5 rounded-xl px-3.5 py-2.5" style={{ backgroundColor: 'rgba(255,46,126,0.10)', borderLeftWidth: 2, borderLeftColor: KC.crimson }}>
+                                                    <Text className="text-sm mr-1.5">😈</Text>
+                                                    <Text className="flex-1 text-[13px] font-semibold leading-5" style={{ color: '#FFB3D0' }}>{wine.roast}</Text>
                                                 </View>
                                             )}
 
                                             {/* 特色 */}
                                             {!!wine.characteristics && (
-                                                <View
-                                                    className="rounded-xl px-3.5 py-3 mt-3.5"
-                                                    style={{ backgroundColor: 'rgba(0,0,0,0.22)' }}
-                                                >
+                                                <View className="rounded-xl px-3.5 py-3 mt-2.5" style={{ backgroundColor: 'rgba(0,0,0,0.22)' }}>
                                                     <Text className="text-[13px] leading-5" style={{ color: KC.textMid }}>
                                                         🍷 {wine.characteristics}
                                                     </Text>
                                                 </View>
                                             )}
 
-                                            {/* 可执行建议 */}
-                                            <View className="flex-row items-center mt-3">
-                                                <View className="w-1.5 h-1.5 rounded-full mr-2" style={{ backgroundColor: theme.accent }} />
-                                                <Text className="text-[12px] font-bold" style={{ color: theme.accent }}>
-                                                    {tier.emoji} {theme.advice}
+                                            {/* 推荐结论(突出) */}
+                                            <View className="flex-row items-center mt-3.5 self-start px-3.5 py-2 rounded-full" style={{ backgroundColor: `${theme.accent}1F`, borderWidth: 1, borderColor: `${theme.accent}55` }}>
+                                                <Text className="text-sm mr-1.5">{tier.emoji}</Text>
+                                                <Text className="text-[13px] font-black tracking-wide" style={{ color: theme.accent }}>
+                                                    {theme.advice}
                                                 </Text>
                                             </View>
                                         </View>
@@ -566,6 +616,7 @@ export default function ResultScreen() {
                                 POWERED BY BRIGHT305 · 坑了么 AI
                             </Text>
                         </View>
+                      </View>
                     </ScrollView>
                 </View>
             </SafeAreaView>

@@ -27,7 +27,7 @@ function withAlpha(hex: string, a: number) {
     return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
-export default function VerdictCosmos({ tint = '#FF2E7E', paused: _paused = false }: { tint?: string; score?: number; paused?: boolean }) {
+export default function VerdictCosmos({ tint = '#FF2E7E', paused: _paused = false }: { tint?: string; score?: number; paused?: boolean; mood?: string }) {
     return (
         <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
             <LinearGradient
