@@ -5,6 +5,8 @@ import { Platform } from 'react-native';
 
 const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
 const BASE_URL = process.env.EXPO_PUBLIC_GEMINI_BASE_URL || "https://api.apiyi.com/v1";
+// 模型可由环境变量覆盖,改模型无需改代码/重新构建
+const MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || "gemini-3.5-flash";
 
 export interface WineItem {
     name: string;
@@ -161,7 +163,7 @@ export async function analyzeWineList(imageUris: string[]): Promise<AnalysisResu
         ];
 
         if (API_KEY.startsWith('sk-')) {
-            const TARGET_MODEL = "gemini-3-flash-preview";
+            const TARGET_MODEL = MODEL;
             console.log(`🔗 Using Model: ${TARGET_MODEL}`);
 
             const response = await fetch(`${BASE_URL}/chat/completions`, {
@@ -239,7 +241,7 @@ export async function analyzeWineList(imageUris: string[]): Promise<AnalysisResu
         } else {
             // Fallback for native Google keys
             const genAI = new GoogleGenerativeAI(API_KEY);
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const model = genAI.getGenerativeModel({ model: MODEL });
 
             // Construct parts for Google SDK
             const parts = [
