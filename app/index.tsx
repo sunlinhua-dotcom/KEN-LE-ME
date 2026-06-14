@@ -7,7 +7,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { ArrowRight, Camera, ImageIcon, Plus, X } from '@/components/svg/Icons';
+import { ArrowRight, Camera, Globe, ImageIcon, MapPin, Plus, X } from '@/components/svg/Icons';
 import { lazy, useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Platform, ScrollView, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
@@ -284,6 +284,26 @@ export default function HomeScreen() {
                                 <Text className="text-center mt-2.5 text-[13px] leading-5" style={{ color: KC.textMid, maxWidth: 260 }}>
                                     拍下酒单,AI 一秒看穿溢价,毒舌点评帮你避坑
                                 </Text>
+
+                                {/* ── 新功能高亮:境外换算 + 店铺背调 ── */}
+                                <View className="mt-4 w-full" style={{ maxWidth: 300 }}>
+                                    <View className="flex-row items-center mb-2.5">
+                                        <View className="w-6 h-6 rounded-full items-center justify-center mr-2.5" style={{ backgroundColor: 'rgba(255,194,75,0.14)', borderWidth: 1, borderColor: 'rgba(255,194,75,0.34)' }}>
+                                            <Globe size={13} color={KC.amber} />
+                                        </View>
+                                        <Text className="text-[12px] flex-1 leading-4" style={{ color: KC.textMid }}>
+                                            <Text style={{ color: KC.goldSoft, fontWeight: '800' }}>境外不踩坑</Text> · 外币价一秒折成人民币
+                                        </Text>
+                                    </View>
+                                    <View className="flex-row items-center">
+                                        <View className="w-6 h-6 rounded-full items-center justify-center mr-2.5" style={{ backgroundColor: 'rgba(46,230,168,0.14)', borderWidth: 1, borderColor: 'rgba(46,230,168,0.34)' }}>
+                                            <MapPin size={13} color={KC.mint} />
+                                        </View>
+                                        <Text className="text-[12px] flex-1 leading-4" style={{ color: KC.textMid }}>
+                                            <Text style={{ color: KC.mint, fontWeight: '800' }}>进店先背调</Text> · 门头一拍,高德 / Google 起底
+                                        </Text>
+                                    </View>
+                                </View>
                             </Reveal>
                         )}
 
