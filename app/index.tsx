@@ -253,6 +253,32 @@ export default function HomeScreen() {
             />
 
             <SafeAreaView className="flex-1">
+                {/* ── 竖排对联(靠左 / 靠右两侧):左联境外换算 · 右联店铺背调 ── */}
+                {!hasImages && (
+                    <>
+                        <View pointerEvents="none" className="absolute" style={{ left: 6, top: 0, bottom: 0, justifyContent: 'center', zIndex: 8 }}>
+                            <View className="items-center">
+                                <View className="w-7 h-7 rounded-full items-center justify-center mb-2" style={{ backgroundColor: 'rgba(255,194,75,0.12)', borderWidth: 1, borderColor: 'rgba(255,194,75,0.32)' }}>
+                                    <Globe size={14} color={KC.amber} />
+                                </View>
+                                {'境外不踩坑'.split('').map((ch, i) => (
+                                    <Text key={i} style={{ color: KC.goldSoft, fontSize: 15, fontWeight: '800', lineHeight: 21, letterSpacing: 2, textShadowColor: 'rgba(6,4,16,0.7)', textShadowRadius: 5 }}>{ch}</Text>
+                                ))}
+                            </View>
+                        </View>
+                        <View pointerEvents="none" className="absolute" style={{ right: 6, top: 0, bottom: 0, justifyContent: 'center', zIndex: 8 }}>
+                            <View className="items-center">
+                                <View className="w-7 h-7 rounded-full items-center justify-center mb-2" style={{ backgroundColor: 'rgba(46,230,168,0.12)', borderWidth: 1, borderColor: 'rgba(46,230,168,0.32)' }}>
+                                    <MapPin size={14} color={KC.mint} />
+                                </View>
+                                {'进店先背调'.split('').map((ch, i) => (
+                                    <Text key={i} style={{ color: KC.mint, fontSize: 15, fontWeight: '800', lineHeight: 21, letterSpacing: 2, textShadowColor: 'rgba(6,4,16,0.7)', textShadowRadius: 5 }}>{ch}</Text>
+                                ))}
+                            </View>
+                        </View>
+                    </>
+                )}
+
                 {/* ── 品牌头部 ── */}
                 <Reveal dy={-12} className="w-full px-6 pt-3 flex-row justify-between items-center z-10">
                     <View className="flex-row items-center">
@@ -284,28 +310,6 @@ export default function HomeScreen() {
                                 <Text className="text-center mt-2.5 text-[13px] leading-5" style={{ color: KC.textMid, maxWidth: 260 }}>
                                     拍下酒单,AI 一秒看穿溢价,毒舌点评帮你避坑
                                 </Text>
-
-                                {/* ── 新功能高亮(对联式左右对称):左联境外换算 / 右联店铺背调 ── */}
-                                <View className="mt-4 flex-row items-stretch justify-center w-full" style={{ maxWidth: 330 }}>
-                                    {/* 左联:境外换算 */}
-                                    <View className="flex-1 items-center px-1.5">
-                                        <View className="w-8 h-8 rounded-full items-center justify-center mb-1.5" style={{ backgroundColor: 'rgba(255,194,75,0.14)', borderWidth: 1, borderColor: 'rgba(255,194,75,0.34)' }}>
-                                            <Globe size={16} color={KC.amber} />
-                                        </View>
-                                        <Text className="text-[13px] font-black" style={{ color: KC.goldSoft }}>境外不踩坑</Text>
-                                        <Text className="text-[11px] mt-0.5" style={{ color: KC.textLow, lineHeight: 14, textAlign: 'center' }}>外币 → 人民币</Text>
-                                    </View>
-                                    {/* 中缝 */}
-                                    <View style={{ width: 1, alignSelf: 'center', height: 44, backgroundColor: 'rgba(232,194,104,0.25)' }} />
-                                    {/* 右联:店铺背调 */}
-                                    <View className="flex-1 items-center px-1.5">
-                                        <View className="w-8 h-8 rounded-full items-center justify-center mb-1.5" style={{ backgroundColor: 'rgba(46,230,168,0.14)', borderWidth: 1, borderColor: 'rgba(46,230,168,0.34)' }}>
-                                            <MapPin size={16} color={KC.mint} />
-                                        </View>
-                                        <Text className="text-[13px] font-black" style={{ color: KC.mint }}>进店先背调</Text>
-                                        <Text className="text-[11px] mt-0.5" style={{ color: KC.textLow, lineHeight: 14, textAlign: 'center' }}>高德 / Google</Text>
-                                    </View>
-                                </View>
                             </Reveal>
                         )}
 
@@ -374,15 +378,15 @@ export default function HomeScreen() {
                                     </TouchableOpacity>
                                 </Reveal>
 
-                                {/* 能力胶囊 */}
-                                <Reveal delay={450} className="flex-row flex-wrap justify-center mt-5" style={{ maxWidth: 320 }}>
+                                {/* 能力胶囊(单行) */}
+                                <Reveal delay={450} className="flex-row justify-center items-center mt-5 px-2">
                                     {CAPABILITIES.map((c) => (
                                         <View
                                             key={c}
-                                            className="px-3 py-1.5 m-1 rounded-full border"
+                                            className="px-2 py-1 mx-0.5 rounded-full border"
                                             style={{ borderColor: 'rgba(255,255,255,0.12)', backgroundColor: 'rgba(255,255,255,0.045)' }}
                                         >
-                                            <Text className="text-[11px] font-medium" style={{ color: KC.textMid }}>{c}</Text>
+                                            <Text className="text-[10px] font-medium" style={{ color: KC.textMid }}>{c}</Text>
                                         </View>
                                     ))}
                                 </Reveal>
