@@ -1,0 +1,26 @@
+# Zeabur 专用 Dockerfile —— 强制走 Docker 构建,跑 node server.mjs(而非 zbpack 默认的 Expo 静态 + serve)。
+#
+# 为什么单独一份:zbpack 把本项目识别成 Expo 静态站,会忽略根目录的 Dockerfile 直接 `npx serve dist`,
+# 导致 /api/analyze 不存在(返回 index.html)。文件名 `Dockerfile.<service-name>` 命中 zbpack 的
+# 服务名匹配,并配合环境变量 ZBPACK_DOCKERFILE_NAME=ken-le-me 显式强制 Docker provider。
+# 内容与根 Dockerfile 保持一致,改一处同步另一处。
+FROM node:20-alpine
+
+WORKDIR /app
+
+# 先装依赖(利用缓存)
+COPY package.json ./
+RUN npm install --legacy-peer-deps
+RUN npm install react-native-svg
+
+# 复制项目
+COPY . .
+
+# 构建静态站(前端已不含任何 key,无需构建期注入密钥)
+RUN npx expo export -p web
+
+EXPOSE 8080
+
+# server.mjs:托管 dist 静态站 + 处理 /api/analyze 转发。
+# 运行时从环境变量读 GEMINI_API_KEY(在 Zeabur 面板设置,不带 EXPO_PUBLIC_ 前缀)。
+CMD ["node", "server.mjs"]
