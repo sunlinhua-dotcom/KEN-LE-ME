@@ -7,6 +7,38 @@ export function formatPrice(n: number | null | undefined): string {
     return Math.round(n).toLocaleString('en-US');
 }
 
+/* ──────────── 多币种(境外)展示 ──────────── */
+
+const CURRENCY_SYMBOL: Record<string, string> = {
+    CNY: '¥', USD: '$', EUR: '€', JPY: '¥', GBP: '£', HKD: 'HK$', TWD: 'NT$', KRW: '₩',
+    THB: '฿', SGD: 'S$', AUD: 'A$', CAD: 'C$', MYR: 'RM', VND: '₫', IDR: 'Rp', PHP: '₱',
+    INR: '₹', CHF: 'CHF ', AED: 'AED ', MOP: 'MOP$', NZD: 'NZ$',
+};
+
+/** 币种符号;未知币种回退成「CODE 」前缀 */
+export function currencySymbol(code?: string): string {
+    if (!code) return '¥';
+    const c = code.toUpperCase().trim();
+    return CURRENCY_SYMBOL[c] || `${c} `;
+}
+
+/** 是否为非人民币(境外)币种 */
+export function isForeign(code?: string): boolean {
+    return !!code && code.toUpperCase().trim() !== 'CNY';
+}
+
+/** 按币种格式化金额:formatMoney(188, 'USD') → "$188" */
+export function formatMoney(n: number | null | undefined, code?: string): string {
+    if (n === null || n === undefined || isNaN(n)) return '—';
+    return `${currencySymbol(code)}${formatPrice(n)}`;
+}
+
+/** 折人民币展示:cnyApprox(188, 7.2) → "≈¥1,354";rate 为空返回 null */
+export function cnyApprox(n: number | null | undefined, rate: number | null | undefined): string | null {
+    if (n === null || n === undefined || isNaN(n) || !rate || rate <= 0) return null;
+    return `≈¥${formatPrice(n * rate)}`;
+}
+
 export interface VerdictTier {
     key: 'mint' | 'amber' | 'blaze' | 'scan';
     label: string;

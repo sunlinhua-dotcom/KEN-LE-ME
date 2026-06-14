@@ -1,13 +1,16 @@
 import Reveal from '@/components/anim/Reveal';
 import Gauge from '@/components/svg/Gauge';
-import { ArrowLeft, Check, Share2, Square, Volume2 } from '@/components/svg/Icons';
+import { ArrowLeft, Check, Globe, Share2, Square, Volume2 } from '@/components/svg/Icons';
 import { BookGlyph, CoinGlyph, FlameGlyph, PriceTagGlyph, RobotMark, TasteGlyph, VerdictMark } from '@/components/svg/Glyphs';
 import Medal from '@/components/svg/Medal';
 import Seal from '@/components/svg/Seal';
 import Stars from '@/components/svg/Stars';
+import StoreCard from '@/components/StoreCard';
 import Deferred from '@/components/three/Deferred';
 import { KC, SerifNum } from '@/constants/theme';
-import { formatPrice, getCardTheme, getHighlights, getItemTier, getOverallVerdict, parseSummary, pickResultVariant } from '@/utils/format';
+import { cnyApprox, formatMoney, formatPrice, getCardTheme, getHighlights, getItemTier, getOverallVerdict, isForeign, parseSummary, pickResultVariant } from '@/utils/format';
+import { getRateToCNY } from '@/utils/fx';
+import { type Coords, decideRegion, GEO_SUPPORTED, lookupStore, type PlaceResult, requestGeo } from '@/utils/place';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -42,6 +45,8 @@ const SCAN_STEPS = [
 const DEMO_DATA: Record<string, AnalysisResult> = {
     pit: {
         type: 'menu',
+        currency: 'CNY',
+        store: { name: '外滩某餐酒馆(演示)', brand: null, country: '中国', city: '上海', region: 'domestic', reputationNote: null },
         summary: '💰最值:长城天赋,店里卖得跟电商差不多,良心。 💸最贵:这瓶 1499 的奔富比电商贵出一只 iPhone。 😈点评:这酒单看着唬人,实则一半靠"看不懂"的进口名收智商税,懂行的直接点长城走人。',
         items: [
             { name: '奔富 BIN389 设拉子赤霞珠', menuPrice: 1499, onlinePrice: 558, ratio: 2.69, diff: 941, characteristics: '澳洲名庄,商务宴请硬通货,但餐厅加价最狠', rating: 8.6, roast: '这价够买俩瓶还多张电影票', knowledge: '澳洲南澳产区,奔富 BIN 系列经典款,设拉子为主混赤霞珠,可陈放 10 年以上。' },
@@ -52,6 +57,8 @@ const DEMO_DATA: Record<string, AnalysisResult> = {
     },
     quality: {
         type: 'single',
+        currency: 'CNY',
+        store: null,
         summary: '💰最值:这几瓶里巴黎之花最实在。 💸最贵:不用说也是黑桃 A。 😈点评:桌上这几瓶搭配挺讲究,有面子也喝得下去,识货。',
         items: [
             { name: 'Armand de Brignac 黑桃 A 香槟', menuPrice: null, onlinePrice: 4280, ratio: null, diff: null, characteristics: '夜店顶流,金瓶气场全开,口感其实细腻', rating: 9.1, roast: '气场拉满,钱包阵亡', knowledge: '法国香槟区,金属漆金瓶辨识度极高,黑桃符号是其标志,夜店与名流圈宠儿。' },
@@ -59,7 +66,24 @@ const DEMO_DATA: Record<string, AnalysisResult> = {
             { name: '巴黎之花美丽时光', menuPrice: null, onlinePrice: 1280, ratio: null, diff: null, characteristics: '花卉瓶身,优雅花香,送礼有面', rating: 8.4, roast: '颜值即正义,送礼真香', knowledge: '巴黎之花顶级款,手绘银扣银莲花瓶身,白中白风格,花香优雅适合送礼。' },
         ],
     },
+    overseas: {
+        type: 'menu',
+        currency: 'USD',
+        store: { name: 'The Wine Bar SF (demo)', brand: null, country: '美国', city: 'San Francisco', region: 'overseas', reputationNote: null },
+        summary: '💰最值:Caymus 加价最克制。 💸最贵:那瓶 Opus One 翻了快三倍。 😈点评:旧金山的酒吧也懂宰游客,折成人民币更肉疼,挑加价低的点。',
+        items: [
+            { name: 'Opus One 2019', menuPrice: 620, onlinePrice: 230, ratio: 2.70, diff: 390, characteristics: '纳帕传奇,黑加仑与雪松,结构宏大', rating: 9.2, roast: '折人民币四千多,慎点', knowledge: '美国纳帕谷,Mondavi 与木桐合作名庄,波尔多风格旗舰。' },
+            { name: 'Caymus Cabernet 2021', menuPrice: 145, onlinePrice: 78, ratio: 1.86, diff: 67, characteristics: '纳帕赤霞珠,黑樱桃与摩卡,圆润', rating: 8.6, roast: '加价克制,这桌良心', knowledge: '美国纳帕谷,Caymus 招牌赤霞珠,果味浓郁单宁柔顺。' },
+            { name: 'Kim Crawford Sauvignon Blanc', menuPrice: 62, onlinePrice: 18, ratio: 3.44, diff: 44, characteristics: '新西兰长相思,百香果与青草', rating: 7.4, roast: '超市酒,这儿翻三倍', knowledge: '新西兰马尔堡产区,经典长相思,热带果香奔放。' },
+        ],
+    },
     error: { type: 'menu', summary: '', items: [], error: '网络连接超时(演示)' },
+};
+
+// 演示模式下的店铺口碑样例(免后端预览店铺卡:?demo=pit / ?demo=overseas)
+const DEMO_PLACE: Record<string, PlaceResult> = {
+    pit: { source: 'amap', name: '外滩某餐酒馆(演示)', rating: 4.3, ratingScale: 5, reviewCount: null, priceLevel: null, cost: 680, address: '上海市黄浦区中山东一路 18 号', type: '餐饮服务;西餐厅', tel: '021-1234 5678', url: null, city: '上海市' },
+    overseas: { source: 'google', name: 'The Wine Bar SF (demo)', rating: 4.6, ratingScale: 5, reviewCount: 1284, priceLevel: 3, cost: null, address: '123 Market St, San Francisco, CA', type: 'bar', tel: null, url: 'https://maps.google.com/', city: 'San Francisco' },
 };
 
 /** 毒舌点评 单行小节:图标 + 标签 + 内容 */
@@ -78,11 +102,15 @@ function SummaryRow({ icon, label, labelColor, text, last }: { icon: React.React
     );
 }
 
-/** 突出价格块:店内价大号 + 电商对比条(空白=溢价部分) */
-function PriceBlock({ wine }: { wine: WineItem }) {
+/** 突出价格块:店内价大号 + 电商对比条(空白=溢价部分)。境外则附「≈¥」折人民币。 */
+function PriceBlock({ wine, currency, rate }: { wine: WineItem; currency: string; rate: number | null }) {
     const menu = wine.menuPrice;
     const online = wine.onlinePrice;
     if (!menu && !online) return null;
+
+    const foreign = isForeign(currency);
+    const money = (n: number | null | undefined) => (foreign ? formatMoney(n, currency) : `¥${formatPrice(n)}`);
+    const approx = (n: number | null | undefined) => (foreign ? cnyApprox(n, rate) : null);
 
     // 单品模式:仅电商参考价
     if (!menu && online) {
@@ -90,8 +118,20 @@ function PriceBlock({ wine }: { wine: WineItem }) {
             <View className="mt-4 flex-row items-end">
                 <View>
                     <Text className="text-[10px] mb-0.5 tracking-wider" style={{ color: KC.textLow }}>电商参考价</Text>
-                    <Text className="num" style={{ color: KC.textHi, fontFamily: SerifNum, fontSize: 30, fontWeight: '800' }}>¥{formatPrice(online)}</Text>
+                    <Text className="num" style={{ color: KC.textHi, fontFamily: SerifNum, fontSize: 30, fontWeight: '800' }}>{money(online)}</Text>
+                    {!!approx(online) && <Text className="num text-[11px] mt-0.5" style={{ color: KC.textLow }}>{approx(online)}</Text>}
                 </View>
+            </View>
+        );
+    }
+
+    // 仅有店内价、缺电商参考价:只显示店内价,不画会误导的对比条(否则空缺会假装成 ~94% 溢价)
+    if (menu && !online) {
+        return (
+            <View className="mt-4">
+                <Text className="text-[10px] mb-0.5 tracking-wider" style={{ color: KC.textLow }}>店内价</Text>
+                <Text className="num" style={{ color: KC.textHi, fontFamily: SerifNum, fontSize: 32, fontWeight: '800', lineHeight: 34 }}>{money(menu)}</Text>
+                {!!approx(menu) && <Text className="num text-[11px] mt-0.5" style={{ color: KC.textLow }}>{approx(menu)}</Text>}
             </View>
         );
     }
@@ -103,11 +143,13 @@ function PriceBlock({ wine }: { wine: WineItem }) {
             <View className="flex-row items-end justify-between mb-2.5">
                 <View>
                     <Text className="text-[10px] mb-0.5 tracking-wider" style={{ color: KC.textLow }}>店内价</Text>
-                    <Text className="num" style={{ color: KC.textHi, fontFamily: SerifNum, fontSize: 32, fontWeight: '800', lineHeight: 34 }}>¥{formatPrice(menu)}</Text>
+                    <Text className="num" style={{ color: KC.textHi, fontFamily: SerifNum, fontSize: 32, fontWeight: '800', lineHeight: 34 }}>{money(menu)}</Text>
+                    {!!approx(menu) && <Text className="num text-[11px] mt-0.5" style={{ color: KC.textLow }}>{approx(menu)}</Text>}
                 </View>
                 <View className="items-end pb-1">
                     <Text className="text-[10px] mb-0.5 tracking-wider" style={{ color: KC.textLow }}>电商参考</Text>
-                    <Text className="num" style={{ color: KC.mint, fontFamily: SerifNum, fontSize: 19, fontWeight: '700' }}>¥{formatPrice(online)}</Text>
+                    <Text className="num" style={{ color: KC.mint, fontFamily: SerifNum, fontSize: 19, fontWeight: '700' }}>{money(online)}</Text>
+                    {!!approx(online) && <Text className="num text-[10px] mt-0.5" style={{ color: KC.textLow }}>{approx(online)}</Text>}
                 </View>
             </View>
             {/* 对比条:绿色=电商价,剩余空白=餐厅溢价 */}
@@ -126,6 +168,16 @@ export default function ResultScreen() {
     const viewShotRef = useRef<View>(null);
     const [targetUris, setTargetUris] = useState<string[]>([]);
     const [isSpeaking, setIsSpeaking] = useState(false);
+
+    // ── 境外:汇率换算 + 店铺口碑 ──
+    const [rate, setRate] = useState<number | null>(null);   // 1 单位外币→多少人民币;CNY 为 1
+    const [rateLive, setRateLive] = useState(true);          // false=离线兜底汇率(近似)
+    const [rateResolved, setRateResolved] = useState(false); // 汇率是否已出结果(区分"获取中"与"拿不到")
+    const [coords, setCoords] = useState<Coords | null>(null);
+    const [locating, setLocating] = useState(false);
+    const [storePlace, setStorePlace] = useState<PlaceResult | null>(null);
+    const [storeLoading, setStoreLoading] = useState(false);
+    const [storeReason, setStoreReason] = useState<string | undefined>(undefined);
 
     // 可重复调用的分析(供首次加载与"重试"复用)
     const runAnalysis = useCallback((uris: string[]) => {
@@ -162,6 +214,53 @@ export default function ResultScreen() {
         if (uris.length > 0) runAnalysis(uris);
         else setLoading(false);
     }, [imageUri, imageUris, demo, runAnalysis]);
+
+    // 币种 → 汇率(仅境外查;CNY 直接为 1)
+    useEffect(() => {
+        if (!result || result.error) { setRate(null); setRateResolved(false); return; }
+        const cur = (result.currency || 'CNY').toUpperCase().trim();
+        if (!isForeign(cur)) { setRate(1); setRateLive(true); setRateResolved(true); return; }
+        let alive = true;
+        setRateResolved(false);
+        getRateToCNY(cur).then((r) => {
+            if (!alive) return;
+            if (r) { setRate(r.rate); setRateLive(r.live); } else { setRate(null); }
+            setRateResolved(true);
+        });
+        return () => { alive = false; };
+    }, [result]);
+
+    // 店铺口碑:有店名才查(演示模式直接给样例);coords 变化(用了定位)会重查。
+    // isAlive 守卫:result/coords 变化或卸载后,旧的在途请求 resolve 不再覆盖新数据。
+    const lookupStoreNow = useCallback((co: Coords | null, isAlive: () => boolean = () => true) => {
+        if (!result || result.error) { setStorePlace(null); return; }
+        const store = result.store;
+        if (!store || !store.name) { setStorePlace(null); setStoreLoading(false); return; }
+
+        if (demo && DEMO_PLACE[demo]) { setStorePlace(DEMO_PLACE[demo]); setStoreLoading(false); setStoreReason(undefined); return; }
+
+        const region = decideRegion(store, co, result.currency);
+        setStoreLoading(true);
+        setStoreReason(undefined);
+        lookupStore({ name: store.name, city: store.city, country: store.country, region, coords: co })
+            .then((res) => { if (!isAlive()) return; setStorePlace(res.place); setStoreReason(res.reason); })
+            .catch(() => { if (!isAlive()) return; setStorePlace(null); setStoreReason('network'); })
+            .finally(() => { if (isAlive()) setStoreLoading(false); });
+    }, [result, demo]);
+
+    useEffect(() => {
+        let alive = true;
+        lookupStoreNow(coords, () => alive);
+        return () => { alive = false; };
+    }, [lookupStoreNow, coords]);
+
+    // 用户点「用定位更准」:请求一次定位,拿到坐标后自动重查
+    const handleUseLocation = useCallback(async () => {
+        setLocating(true);
+        const co = await requestGeo();
+        setLocating(false);
+        if (co) setCoords(co);
+    }, []);
 
     // ── 整单结论 ──
     const verdict = useMemo(() => (result ? getOverallVerdict(result) : null), [result]);
@@ -380,6 +479,10 @@ export default function ResultScreen() {
 
     /* ════════ 结果态:判决星海报告 ════════ */
     const tint = verdict?.tier.color || KC.crimson;
+    const currency = (result.currency || 'CNY').toUpperCase().trim();
+    const foreign = isForeign(currency);
+    const showStore = !!result.store && (!!result.store.name || !!result.store.reputationNote);
+    const storeRegion = decideRegion(result.store, coords, currency);
     return (
         <View className="flex-1 bg-void">
             <Deferred><Scene name="verdict" tint={tint} score={verdict?.score ?? 50} mood={verdict?.tier.key} variant={sceneVariant} /></Deferred>
@@ -478,8 +581,11 @@ export default function ResultScreen() {
                                                 <View className="flex-1 items-center">
                                                     <Text className="text-[10px] mb-0.5" style={{ color: KC.textLow }}>整单总溢价</Text>
                                                     <Text className="text-lg font-bold num" style={{ color: KC.blaze, fontFamily: SerifNum }}>
-                                                        ¥{formatPrice(verdict.totalPremium)}
+                                                        {foreign ? formatMoney(verdict.totalPremium, currency) : `¥${formatPrice(verdict.totalPremium)}`}
                                                     </Text>
+                                                    {foreign && !!cnyApprox(verdict.totalPremium, rate) && (
+                                                        <Text className="text-[10px] num" style={{ color: KC.textLow }}>{cnyApprox(verdict.totalPremium, rate)}</Text>
+                                                    )}
                                                 </View>
                                                 <View className="w-px" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }} />
                                                 <View className="flex-1 items-center">
@@ -502,6 +608,42 @@ export default function ResultScreen() {
                             </Reveal>
                         )}
 
+                        {/* ── 境外币种 · 汇率提示 ── */}
+                        {foreign && (
+                            <Reveal delay={30}>
+                                <View
+                                    className="flex-row items-center justify-between rounded-2xl border px-4 py-2.5 mb-3.5"
+                                    style={{ backgroundColor: 'rgba(255,194,75,0.08)', borderColor: 'rgba(255,194,75,0.28)' }}
+                                >
+                                    <View className="flex-row items-center">
+                                        <Globe size={15} color={KC.amber} />
+                                        <Text className="text-[12px] font-black ml-2" style={{ color: KC.amber, letterSpacing: 1 }}>
+                                            境外 · {currency}
+                                        </Text>
+                                    </View>
+                                    <Text className="text-[12px] num" style={{ color: KC.textMid }}>
+                                        {rate
+                                            ? `1 ${currency} ≈ ¥${rate < 0.1 ? rate.toFixed(4) : rate.toFixed(2)}${rateLive ? '' : '(约)'}`
+                                            : rateResolved ? '汇率暂不可用' : '汇率获取中…'}
+                                    </Text>
+                                </View>
+                            </Reveal>
+                        )}
+
+                        {/* ── 店铺口碑(境内高德 / 境外 Google / AI 参考)── */}
+                        {showStore && (
+                            <StoreCard
+                                store={result.store!}
+                                place={storePlace}
+                                loading={storeLoading}
+                                region={storeRegion}
+                                canLocate={GEO_SUPPORTED && !coords}
+                                locating={locating}
+                                onUseLocation={handleUseLocation}
+                                reason={storeReason}
+                            />
+                        )}
+
                         {/* ── 关键发现(最坑 / 最值)── */}
                         {verdict?.mode === 'pit' && (highlights?.worst || highlights?.best) && (
                             <Reveal delay={60} className="flex-row mb-3.5" style={{ gap: 10 }}>
@@ -509,7 +651,12 @@ export default function ResultScreen() {
                                     <View className="flex-1 rounded-2xl border px-3.5 py-3" style={{ backgroundColor: 'rgba(46,13,16,0.6)', borderColor: 'rgba(255,90,95,0.3)' }}>
                                         <Text className="text-[10px] font-bold tracking-wider mb-1" style={{ color: KC.blaze }}>💣 最坑</Text>
                                         <Text className="text-[12px] font-bold leading-4" style={{ color: KC.textHi }} numberOfLines={2}>{highlights.worst.name}</Text>
-                                        <Text className="text-[11px] mt-1 num" style={{ color: KC.blaze, fontFamily: SerifNum }}>多赚 ¥{formatPrice(highlights.worst.premium)}</Text>
+                                        <Text className="text-[11px] mt-1 num" style={{ color: KC.blaze, fontFamily: SerifNum }}>
+                                            多赚 {foreign ? formatMoney(highlights.worst.premium, currency) : `¥${formatPrice(highlights.worst.premium)}`}
+                                        </Text>
+                                        {foreign && !!cnyApprox(highlights.worst.premium, rate) && (
+                                            <Text className="text-[10px] num" style={{ color: KC.textLow }}>{cnyApprox(highlights.worst.premium, rate)}</Text>
+                                        )}
                                     </View>
                                 )}
                                 {highlights?.best && (
@@ -634,7 +781,7 @@ export default function ResultScreen() {
                                             </View>
 
                                             {/* 突出价格 */}
-                                            <PriceBlock wine={wine} />
+                                            <PriceBlock wine={wine} currency={currency} rate={rate} />
 
                                             {/* 溢价结论 */}
                                             {wine.diff !== null && wine.diff !== undefined && (
@@ -644,9 +791,16 @@ export default function ResultScreen() {
                                                         style={{ backgroundColor: wine.diff > 0 ? 'rgba(255,90,95,0.18)' : 'rgba(46,230,168,0.16)' }}
                                                     >
                                                         <Text className="text-[13px] font-black num" style={{ color: wine.diff > 0 ? KC.blaze : KC.mint }}>
-                                                            {wine.diff > 0 ? `溢价 ¥${formatPrice(wine.diff)}` : `比电商低 ¥${formatPrice(Math.abs(wine.diff))}`}
+                                                            {wine.diff > 0
+                                                                ? `溢价 ${foreign ? formatMoney(wine.diff, currency) : `¥${formatPrice(wine.diff)}`}`
+                                                                : `比电商低 ${foreign ? formatMoney(Math.abs(wine.diff), currency) : `¥${formatPrice(Math.abs(wine.diff))}`}`}
                                                         </Text>
                                                     </View>
+                                                    {foreign && !!cnyApprox(Math.abs(wine.diff), rate) && (
+                                                        <View className="px-2.5 py-1.5 rounded-lg" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
+                                                            <Text className="text-[12px] num" style={{ color: KC.textLow }}>{cnyApprox(Math.abs(wine.diff), rate)}</Text>
+                                                        </View>
+                                                    )}
                                                     {wine.ratio && (
                                                         <View className="px-2.5 py-1.5 rounded-lg" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
                                                             <Text className="text-[12px] font-bold num" style={{ color: KC.gold }}>{wine.ratio.toFixed(1)}× 电商价</Text>

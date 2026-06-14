@@ -124,3 +124,30 @@ export function Check(p: IconProps) {
         </Base>
     );
 }
+
+export function MapPin(p: IconProps) {
+    return (
+        <Base {...p}>
+            <Path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+            <Circle cx="12" cy="10" r="3" />
+        </Base>
+    );
+}
+
+export function Globe(p: IconProps) {
+    return (
+        <Base {...p}>
+            <Circle cx="12" cy="12" r="10" />
+            <Path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+            <Line x1="2" y1="12" x2="22" y2="12" />
+        </Base>
+    );
+}
+
+export function Star(p: IconProps) {
+    return (
+        <Base {...p}>
+            <Polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </Base>
+    );
+}

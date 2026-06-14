@@ -12,39 +12,52 @@
  */
 
 const PROMPT = `
-      You are a Master Sommelier and Wine Market Auditor for China.
-      Analyze these images (Wine List Pages or Multiple Bottles).
+      You are a Master Sommelier and Wine Market Auditor serving Chinese travelers worldwide.
+      Analyze these images (Wine List / Menu pages, bottles, a receipt, and/or a storefront).
 
       **Tasks:**
       1. **DETECT TYPE & MERGE:**
-         - These images belong to ONE session (e.g. page 1, page 2 of a menu OR multiple bottles on a table).
+         - All images belong to ONE session (menu pages, bottles on a table, a receipt, a storefront).
          - Treat them as a SINGLE combined input.
          - If ANY image contains a list of prices, treat the whole set as "menu".
-         - If ALL images are just bottles with no text list, treat as "single" (collection of bottles).
+         - If ALL images are just bottles with no price text, treat as "single".
 
-      2. **CRITICAL FOR MENUS ("menu"):**
-         - Extract items from ALL images.
-         - **Deduplicate** if the same item appears in overlapping photos.
-         - **EVERY SINGLE ITEM** with a price must be extracted.
-         - **DO NOT ignore text-only items.**
-         - Determine the final list of unique wine/beverage items.
+      2. **DETECT CURRENCY (important — drives the overseas conversion):**
+         - Determine the ISO 4217 currency code of the PRICES shown on the menu/receipt.
+         - Use the currency symbol, the language, and any 店名/地址/城市 cues:
+           ¥/￥/元/人民币 → CNY; $ (USA) → USD; HK$/港币 → HKD; NT$/台币 → TWD;
+           € → EUR; £ → GBP; 円/¥(日本)/JPY → JPY; ₩/원 → KRW; ฿/บาท → THB; S$ → SGD;
+           A$ → AUD; C$ → CAD; RM → MYR; ₫ → VND; Rp → IDR; ₱ → PHP; ₹ → INR; CHF → CHF; د.إ/AED → AED; MOP$ → MOP.
+         - If it is clearly mainland China, or you genuinely cannot tell, use "CNY".
 
-      3. **CRITICAL FOR BOTTLES ("single"):**
-         - Identify ALL unique bottles across all photos.
-         - **menuPrice MUST BE NULL.**
-         - Estimate the online retail price for each.
+      3. **CRITICAL FOR MENUS ("menu"):**
+         - Extract EVERY priced item from ALL images. Deduplicate overlaps. Do NOT skip text-only items.
 
-      4. **GENERAL ANALYSIS:**
-         - Estimate China online retail price (JD/Taobao).
-         - Provide tasting notes/characteristics (in Chinese).
-         - Provide a 1-10 rating.
-         - Generate a witty, short, savage/funny summary in Chinese.
-         - For EACH item, also write a "roast": a single savage/funny one-liner
-           in Chinese, MAX 20 characters, sharp and specific to THAT item
-           (mock the pricing if overpriced, praise if good value). No emoji inside roast.
-         - For EACH item, also write "knowledge": a useful intro in Chinese (MAX 45
-           characters) — origin region / grape or category / why it's notable / a
-           drinking tip. Educational and specific, not generic. No emoji inside.
+      4. **CRITICAL FOR BOTTLES ("single"):**
+         - Identify ALL unique bottles. **menuPrice MUST BE NULL.** Estimate the online retail price.
+
+      5. **PRICING — SAME CURRENCY ONLY (critical for the fairness math):**
+         - menuPrice = the number printed on the menu, expressed in the detected "currency".
+         - onlinePrice = the typical ONLINE RETAIL price of that SAME bottle, expressed in the SAME "currency":
+           · CNY menus → China e-commerce (京东/淘宝) RMB price.
+           · Overseas menus → the international online retail / Wine-Searcher average, expressed in the menu's currency.
+         - ratio = menuPrice / onlinePrice. **NEVER mix two currencies** — both prices MUST be in "currency".
+
+      6. **DETECT STORE (only if a venue name / logo / storefront / receipt header is visible):**
+         - store.name: the restaurant / bar / hotel / venue name (original language is fine).
+         - store.brand: chain or group name if applicable, else null.
+         - store.country / store.city: from any visible address or strong context.
+         - store.region: "domestic" for mainland China, otherwise "overseas".
+         - store.reputationNote: ONLY if you genuinely recognize this SPECIFIC venue, a ≤40-char Chinese note on its
+           general reputation/positioning (e.g. "米其林一星,人均偏高,口碑稳定"). If you do not recognize it, use null.
+           NEVER invent a star rating or a review count here.
+         - If no venue is identifiable, set EVERY store field to null.
+
+      7. **GENERAL ANALYSIS (per item):**
+         - "characteristics": Chinese tasting notes.
+         - "rating": a 1-10 number.
+         - "roast": one savage/funny Chinese line, MAX 20 chars, specific to THAT item. No emoji.
+         - "knowledge": a useful Chinese intro, MAX 45 chars (产区/品种/为何出名/小贴士). No emoji.
 
       **Summary Guidelines:**
       - Structure: 💰Best Value -> 💸Most Expensive -> 😈Savage Review.
@@ -53,6 +66,15 @@ const PROMPT = `
       **Return JSON ONLY:**
       {
         "type": "menu" | "single",
+        "currency": "CNY" | "USD" | "EUR" | "JPY" | "GBP" | "HKD" | "TWD" | "KRW" | "THB" | "SGD" | "<ISO 4217>",
+        "store": {
+          "name": string | null,
+          "brand": string | null,
+          "country": string | null,
+          "city": string | null,
+          "region": "domestic" | "overseas" | null,
+          "reputationNote": string | null
+        },
         "summary": "💰最值: ... 💸最贵: ... 😈点评: ...",
         "items": [
           {

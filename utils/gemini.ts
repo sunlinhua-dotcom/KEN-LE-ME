@@ -20,8 +20,28 @@ export interface WineItem {
     knowledge?: string;
 }
 
+/** 拍到门头 / 酒单抬头 / 小票时,AI 识别出的店铺信息(可能全为 null) */
+export interface StoreInfo {
+    /** 店名(原文即可) */
+    name: string | null;
+    /** 连锁 / 集团品牌 */
+    brand: string | null;
+    /** 国家(中文名或 ISO-2) */
+    country: string | null;
+    /** 城市 */
+    city: string | null;
+    /** 境内 / 境外 */
+    region: 'domestic' | 'overseas' | null;
+    /** AI 自带知识的口碑提示(≤40 字,非实时;不认识则 null) */
+    reputationNote: string | null;
+}
+
 export interface AnalysisResult {
     type: 'menu' | 'single';
+    /** 菜单价格的币种(ISO 4217),缺省按 CNY 处理 */
+    currency?: string;
+    /** 识别到的店铺(用于查口碑);未识别则为 null/缺省 */
+    store?: StoreInfo | null;
     summary: string;
     items: WineItem[];
     /** 出错时填写;UI 据此显示错误态 + 重试,而非假数据 */
@@ -39,8 +59,13 @@ function processItems(result: AnalysisResult): AnalysisResult {
     const processedItems = result.items.map(item => {
         const menuPrice = item.menuPrice || 0;
         const onlinePrice = item.onlinePrice || 0;
-        const diff = (menuPrice > 0 && onlinePrice > 0) ? (menuPrice - onlinePrice) : null;
-        return { ...item, diff: item.diff ?? diff };
+        const bothValid = menuPrice > 0 && onlinePrice > 0;
+        const diff = bothValid ? (menuPrice - onlinePrice) : null;
+        // 本地按同币种价格重算 ratio(币种无关的纯比值),优先于 AI 给的 ratio:
+        // ① 保证 diff 与 ratio 一致(不会出现「溢价¥X」配「2.7×」互相打架);
+        // ② AI 漏给 ratio 时,有店内价+电商价的条目也不会被坑指数计算丢弃。
+        const ratio = bothValid ? menuPrice / onlinePrice : null;
+        return { ...item, diff: item.diff ?? diff, ratio: ratio ?? item.ratio };
     });
     processedItems.sort((a, b) => (b.diff || 0) - (a.diff || 0));
     return { ...result, items: processedItems };

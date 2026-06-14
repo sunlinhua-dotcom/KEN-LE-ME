@@ -1,0 +1,16 @@
+# 本地用 `npx wrangler pages dev dist` 起 Cloudflare Pages Functions 时的环境变量样例。
+# 复制成 .dev.vars(已 gitignore),填上真实值。生产环境请在 CF Pages 面板配同名变量。
+# 这些是「服务端」变量 —— 不要带 EXPO_PUBLIC_ 前缀,也不会进前端 bundle。
+
+# AI 鉴定(必填)
+GEMINI_API_KEY=sk-xxxxxxxx
+# GEMINI_BASE_URL=https://api.apiyi.com/v1
+# GEMINI_MODEL=gemini-3.5-flash
+
+# 境内店铺评分:高德 Web 服务 key
+AMAP_KEY=你的高德key
+
+# 境外店铺评分:Google Places key(可选;不配则境外退化为 AI 参考口碑)
+# GOOGLE_PLACES_KEY=你的google_places_key
+
+# 汇率 /api/fx 无需任何 key。
