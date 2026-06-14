@@ -58,6 +58,7 @@ export async function lookupStore(params: {
     name: string;
     city?: string | null;
     country?: string | null;
+    address?: string | null;
     region: 'domestic' | 'overseas';
     coords?: Coords | null;
 }): Promise<PlaceLookup> {
@@ -65,6 +66,7 @@ export async function lookupStore(params: {
     q.set('name', params.name);
     if (params.city) q.set('city', params.city);
     if (params.country) q.set('country', params.country);
+    if (params.address) q.set('address', params.address);
     q.set('region', params.region);
     if (params.coords) {
         q.set('lat', String(params.coords.lat));

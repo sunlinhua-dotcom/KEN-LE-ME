@@ -36,6 +36,39 @@ function inChina(lat, lng) {
     return lat >= 18 && lat <= 53.6 && lng >= 73.4 && lng <= 135.1;
 }
 
+/* ── WGS-84(浏览器 GPS)→ GCJ-02(高德/火星坐标)──
+   浏览器 navigator.geolocation 给的是 WGS-84;高德 API 要 GCJ-02。
+   在中国直接拿 WGS-84 查高德会系统性偏移 ~500m(实测陕西南路→襄阳北路、徐汇区),
+   即用户说的"定位漂移"。查高德前必须转换;Google(境外)仍用 WGS-84。 */
+const GCJ_PI = Math.PI, GCJ_A = 6378245.0, GCJ_EE = 0.00669342162296594323;
+function gcjOutOfChina(lat, lng) { return (lng < 72.004 || lng > 137.8347) || (lat < 0.8293 || lat > 55.8271); }
+function gcjTLat(x, y) {
+    let r = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+    r += (20 * Math.sin(6 * x * GCJ_PI) + 20 * Math.sin(2 * x * GCJ_PI)) * 2 / 3;
+    r += (20 * Math.sin(y * GCJ_PI) + 40 * Math.sin(y / 3 * GCJ_PI)) * 2 / 3;
+    r += (160 * Math.sin(y / 12 * GCJ_PI) + 320 * Math.sin(y * GCJ_PI / 30)) * 2 / 3;
+    return r;
+}
+function gcjTLng(x, y) {
+    let r = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+    r += (20 * Math.sin(6 * x * GCJ_PI) + 20 * Math.sin(2 * x * GCJ_PI)) * 2 / 3;
+    r += (20 * Math.sin(x * GCJ_PI) + 40 * Math.sin(x / 3 * GCJ_PI)) * 2 / 3;
+    r += (150 * Math.sin(x / 12 * GCJ_PI) + 300 * Math.sin(x / 30 * GCJ_PI)) * 2 / 3;
+    return r;
+}
+/** WGS-84 → GCJ-02,返回 [lat, lng];中国境外原样返回 */
+function wgs84ToGcj02(lat, lng) {
+    if (gcjOutOfChina(lat, lng)) return [lat, lng];
+    let dLat = gcjTLat(lng - 105, lat - 35);
+    let dLng = gcjTLng(lng - 105, lat - 35);
+    const rl = lat / 180 * GCJ_PI;
+    let m = Math.sin(rl); m = 1 - GCJ_EE * m * m;
+    const s = Math.sqrt(m);
+    dLat = (dLat * 180) / ((GCJ_A * (1 - GCJ_EE)) / (m * s) * GCJ_PI);
+    dLng = (dLng * 180) / (GCJ_A / s * Math.cos(rl) * GCJ_PI);
+    return [lat + dLat, lng + dLng];
+}
+
 /** 高德有些字段(address/tel)在无值时会返回 [],统一成字符串/null */
 function amapStr(v) {
     if (typeof v === 'string' && v.trim()) return v.trim();
@@ -53,62 +86,89 @@ async function fetchTO(url, opts = {}, ms = 4500) {
     }
 }
 
-async function lookupAmap(env, { name, city, lat, lng }) {
+/** 拉一次高德 JSON(带超时),失败返回 null */
+async function amapGet(url) {
+    try {
+        const r = await fetchTO(url);
+        return await r.json();
+    } catch {
+        return null;
+    }
+}
+
+/** 地理编码:把照片里的门牌/地址转成 GCJ-02 坐标(高德 geocode 返回的就是 GCJ-02) */
+async function amapGeocode(env, address, city) {
+    const url = `https://restapi.amap.com/v3/geocode/geo?key=${env.AMAP_KEY}`
+        + `&address=${encodeURIComponent(address)}`
+        + (city ? `&city=${encodeURIComponent(city)}` : '');
+    const d = await amapGet(url);
+    if (d && d.status === '1' && Array.isArray(d.geocodes) && d.geocodes[0] && typeof d.geocodes[0].location === 'string') {
+        const [lng, lat] = d.geocodes[0].location.split(',').map(Number);
+        if (Number.isFinite(lng) && Number.isFinite(lat)) return { lng, lat };
+    }
+    return null;
+}
+
+/** 从 POI 列表里挑一个:优先有评分的,其次第一个 */
+function pickPoi(d) {
+    const pois = d && d.status === '1' && Array.isArray(d.pois) ? d.pois : [];
+    return pois.find((p) => p.biz_ext && num(p.biz_ext.rating) != null) || pois[0] || null;
+}
+
+/** 把高德 POI 规整成统一的 place 结构 */
+function amapPlace(poi, name) {
+    return {
+        source: 'amap',
+        name: poi.name || name,
+        rating: poi.biz_ext ? num(poi.biz_ext.rating) : null, // 高德评分 0-5
+        ratingScale: 5,
+        reviewCount: null,
+        priceLevel: null,
+        cost: poi.biz_ext ? num(poi.biz_ext.cost) : null,     // 人均(元)
+        address: amapStr(poi.address) || [poi.pname, poi.cityname, poi.adname].filter(Boolean).join('') || null,
+        type: amapStr(poi.type),
+        tel: amapStr(poi.tel),
+        url: null,
+        city: amapStr(poi.cityname),
+    };
+}
+
+async function lookupAmap(env, { name, city, address, lat, lng }) {
     const key = env.AMAP_KEY;
     if (!key) return json({ ok: false, source: 'amap', place: null, reason: 'no_amap_key' });
 
-    let api;
-    if (lat != null && lng != null) {
-        // 有定位:就近搜索更准
-        api = `https://restapi.amap.com/v3/place/around?key=${key}`
-            + `&location=${encodeURIComponent(`${lng},${lat}`)}`
-            + `&keywords=${encodeURIComponent(name)}&radius=3000&offset=10&extensions=all`;
-    } else {
-        api = `https://restapi.amap.com/v3/place/text?key=${key}`
-            + `&keywords=${encodeURIComponent(name)}`
-            + (city ? `&city=${encodeURIComponent(city)}` : '')
-            + `&citylimit=false&offset=10&extensions=all`;
+    // 坐标锚点优先级:① 照片门牌地址(地理编码,最准、不靠 GPS)② GPS(WGS-84→GCJ-02)
+    let gLng = null, gLat = null, byAddress = false;
+    if (address) {
+        const g = await amapGeocode(env, address, city);
+        if (g) { gLng = g.lng; gLat = g.lat; byAddress = true; }
+    }
+    if (gLat == null && lat != null && lng != null) {
+        const [aLat, aLng] = wgs84ToGcj02(lat, lng);
+        gLat = aLat; gLng = aLng;
     }
 
-    let d;
-    try {
-        const r = await fetchTO(api);
-        d = await r.json();
-    } catch {
-        return json({ ok: false, source: 'amap', place: null, reason: 'amap_network' });
+    // 有锚点:就近 + 店名关键字匹配(门牌锚点半径更小、更精确)
+    if (gLat != null && gLng != null) {
+        const radius = byAddress ? 1200 : 3000;
+        const loc = encodeURIComponent(`${gLng},${gLat}`);
+        let poi = pickPoi(await amapGet(`https://restapi.amap.com/v3/place/around?key=${key}&location=${loc}&keywords=${encodeURIComponent(name)}&radius=${radius}&offset=10&extensions=all`));
+        // 门牌锚点但店名没匹配上 → 就近(不带关键字)取该地址处的 POI 兜底
+        if (!poi && byAddress) {
+            poi = pickPoi(await amapGet(`https://restapi.amap.com/v3/place/around?key=${key}&location=${loc}&radius=300&offset=10&extensions=all`));
+        }
+        if (!poi) return json({ ok: true, source: 'amap', place: null, reason: 'not_found' });
+        return json({ ok: true, source: 'amap', place: amapPlace(poi, name) });
     }
+
+    // 无任何坐标锚点:仅按店名 + 城市文本搜索
+    const d = await amapGet(`https://restapi.amap.com/v3/place/text?key=${key}&keywords=${encodeURIComponent(name)}`
+        + (city ? `&city=${encodeURIComponent(city)}` : '') + `&citylimit=false&offset=10&extensions=all`);
     if (!d) return json({ ok: false, source: 'amap', place: null, reason: 'amap_no_response' });
-    if (d.status !== '1') {
-        return json({ ok: false, source: 'amap', place: null, reason: `amap_${d.infocode || 'err'}:${d.info || ''}` });
-    }
-
-    const pois = Array.isArray(d.pois) ? d.pois : [];
-    // 优先取有评分的 POI,其次取第一个
-    const rated = pois.find((p) => p.biz_ext && num(p.biz_ext.rating) != null);
-    const poi = rated || pois[0];
+    if (d.status !== '1') return json({ ok: false, source: 'amap', place: null, reason: `amap_${d.infocode || 'err'}:${d.info || ''}` });
+    const poi = pickPoi(d);
     if (!poi) return json({ ok: true, source: 'amap', place: null, reason: 'not_found' });
-
-    const rating = poi.biz_ext ? num(poi.biz_ext.rating) : null; // 高德评分为 0-5
-    const cost = poi.biz_ext ? num(poi.biz_ext.cost) : null;     // 人均(元)
-
-    return json({
-        ok: true,
-        source: 'amap',
-        place: {
-            source: 'amap',
-            name: poi.name || name,
-            rating,
-            ratingScale: 5,
-            reviewCount: null,
-            priceLevel: null,
-            cost,
-            address: amapStr(poi.address) || [poi.pname, poi.cityname, poi.adname].filter(Boolean).join('') || null,
-            type: amapStr(poi.type),
-            tel: amapStr(poi.tel),
-            url: null,
-            city: amapStr(poi.cityname),
-        },
-    });
+    return json({ ok: true, source: 'amap', place: amapPlace(poi, name) });
 }
 
 const GOOGLE_PRICE_LEVEL = {
@@ -119,12 +179,13 @@ const GOOGLE_PRICE_LEVEL = {
     PRICE_LEVEL_VERY_EXPENSIVE: 4,
 };
 
-async function lookupGoogle(env, { name, city, country, lat, lng }) {
+async function lookupGoogle(env, { name, city, country, address, lat, lng }) {
     const key = env.GOOGLE_PLACES_KEY;
     if (!key) return json({ ok: false, source: 'google', place: null, reason: 'no_google_key' });
 
     const body = {
-        textQuery: [name, city, country].filter(Boolean).join(' '),
+        // 门牌优先:照片里识别到的地址也进查询词,海外门店同样能精确锁定
+        textQuery: [name, address, city, country].filter(Boolean).join(' '),
         languageCode: 'zh-CN',
         pageSize: 3, // 只读 places[0];pageSize 是 New API 的规范字段(maxResultCount 已弃用)
     };
@@ -183,6 +244,7 @@ export async function onRequestGet(context) {
     const name = (url.searchParams.get('name') || '').trim();
     const city = (url.searchParams.get('city') || '').trim();
     const country = (url.searchParams.get('country') || '').trim();
+    const address = (url.searchParams.get('address') || '').trim();
     let region = (url.searchParams.get('region') || '').trim();
     const lat = num(url.searchParams.get('lat'));
     const lng = num(url.searchParams.get('lng'));
@@ -199,13 +261,13 @@ export async function onRequestGet(context) {
     const cache = caches.default;
     const coordKey = lat != null && lng != null ? `${lat.toFixed(2)},${lng.toFixed(2)}` : '';
     const cacheKey = new Request(
-        `https://place.kenleme.internal/${region}?q=${encodeURIComponent(name)}&c=${encodeURIComponent(city)}&co=${encodeURIComponent(country)}&g=${coordKey}`,
+        `https://place.kenleme.internal/${region}?q=${encodeURIComponent(name)}&c=${encodeURIComponent(city)}&co=${encodeURIComponent(country)}&a=${encodeURIComponent(address)}&g=${coordKey}`,
         { method: 'GET' },
     );
     const hit = await cache.match(cacheKey);
     if (hit) return hit;
 
-    const params = { name, city, country, lat, lng };
+    const params = { name, city, country, address, lat, lng };
     const resp = region === 'overseas'
         ? await lookupGoogle(env, params)
         : await lookupAmap(env, params);

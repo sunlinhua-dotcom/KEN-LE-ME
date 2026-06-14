@@ -54,6 +54,12 @@ const PROMPT = `
          - store.name: the restaurant / bar / hotel / venue name (original language is fine).
          - store.brand: chain or group name if applicable, else null.
          - store.country / store.city: from any visible address or strong context.
+         - store.address: the most precise LOCATION CLUE you can READ from the image (门牌 / 路牌 / 招牌 / 小票 / 海报),
+           used to pin the venue's location. Copy it VERBATIM, preferring in this order:
+           ① full address with house number — 门牌 (e.g. "上海市黄浦区陕西南路123号" / "123 Market St, San Francisco");
+           ② street + number; ③ street name or a cross-street (e.g. "陕西南路 / 淮海中路口");
+           ④ a clear nearby landmark, metro station or mall (e.g. "陕西南路地铁站", "环贸 iapm").
+           ALWAYS prefer an on-image clue over a guess. Use null ONLY if the image shows no location text at all.
          - store.region: "domestic" for mainland China, otherwise "overseas".
          - store.reputationNote: ONLY if you genuinely recognize this SPECIFIC venue, a ≤40-char Chinese note on its
            general reputation/positioning (e.g. "米其林一星,人均偏高,口碑稳定"). If you do not recognize it, use null.
@@ -79,6 +85,7 @@ const PROMPT = `
           "brand": string | null,
           "country": string | null,
           "city": string | null,
+          "address": string | null,
           "region": "domestic" | "overseas" | null,
           "reputationNote": string | null
         },
@@ -209,12 +216,26 @@ const GOOGLE_PLACES_KEY = process.env.GOOGLE_PLACES_KEY;
 const pnum = (x) => { if (x == null || x === '') return null; const n = parseFloat(x); return Number.isFinite(n) ? n : null; };
 const inChina = (lat, lng) => lat >= 18 && lat <= 53.6 && lng >= 73.4 && lng <= 135.1;
 const amapStr = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+// WGS-84(浏览器 GPS)→ GCJ-02(高德),不转的话在中国偏移 ~500m(定位漂移)
+const _PI = Math.PI, _A = 6378245.0, _EE = 0.00669342162296594323;
+const _outCN = (lat, lng) => (lng < 72.004 || lng > 137.8347) || (lat < 0.8293 || lat > 55.8271);
+const _tLat = (x, y) => { let r = -100 + 2*x + 3*y + 0.2*y*y + 0.1*x*y + 0.2*Math.sqrt(Math.abs(x)); r += (20*Math.sin(6*x*_PI) + 20*Math.sin(2*x*_PI))*2/3; r += (20*Math.sin(y*_PI) + 40*Math.sin(y/3*_PI))*2/3; r += (160*Math.sin(y/12*_PI) + 320*Math.sin(y*_PI/30))*2/3; return r; };
+const _tLng = (x, y) => { let r = 300 + x + 2*y + 0.1*x*x + 0.1*x*y + 0.1*Math.sqrt(Math.abs(x)); r += (20*Math.sin(6*x*_PI) + 20*Math.sin(2*x*_PI))*2/3; r += (20*Math.sin(x*_PI) + 40*Math.sin(x/3*_PI))*2/3; r += (150*Math.sin(x/12*_PI) + 300*Math.sin(x/30*_PI))*2/3; return r; };
+const wgs84ToGcj02 = (lat, lng) => {
+    if (_outCN(lat, lng)) return [lat, lng];
+    let dLat = _tLat(lng - 105, lat - 35), dLng = _tLng(lng - 105, lat - 35);
+    const rl = lat / 180 * _PI; let m = Math.sin(rl); m = 1 - _EE * m * m; const s = Math.sqrt(m);
+    dLat = (dLat * 180) / ((_A * (1 - _EE)) / (m * s) * _PI);
+    dLng = (dLng * 180) / (_A / s * Math.cos(rl) * _PI);
+    return [lat + dLat, lng + dLng];
+};
 const GPL = { PRICE_LEVEL_FREE: 0, PRICE_LEVEL_INEXPENSIVE: 1, PRICE_LEVEL_MODERATE: 2, PRICE_LEVEL_EXPENSIVE: 3, PRICE_LEVEL_VERY_EXPENSIVE: 4 };
 
 app.get('/api/place', async (req, res) => {
     const name = String(req.query.name || '').trim();
     const city = String(req.query.city || '').trim();
     const country = String(req.query.country || '').trim();
+    const address = String(req.query.address || '').trim();
     let region = String(req.query.region || '').trim();
     const lat = pnum(req.query.lat);
     const lng = pnum(req.query.lng);
@@ -226,7 +247,7 @@ app.get('/api/place', async (req, res) => {
     if (region === 'overseas') {
         if (!GOOGLE_PLACES_KEY) return res.json({ ok: false, source: 'google', place: null, reason: 'no_google_key' });
         try {
-            const body = { textQuery: [name, city, country].filter(Boolean).join(' '), languageCode: 'zh-CN', pageSize: 3 };
+            const body = { textQuery: [name, address, city, country].filter(Boolean).join(' '), languageCode: 'zh-CN', pageSize: 3 };
             if (lat != null && lng != null) body.locationBias = { circle: { center: { latitude: lat, longitude: lng }, radius: 5000 } };
             const r = await fetchTO('https://places.googleapis.com/v1/places:searchText', {
                 method: 'POST',
@@ -249,26 +270,33 @@ app.get('/api/place', async (req, res) => {
         } catch { return res.json({ ok: false, source: 'google', place: null, reason: 'google_network' }); }
     }
 
-    // domestic → 高德
+    // domestic → 高德(门牌地址优先地理编码 → GPS(WGS-84→GCJ-02)→ 仅店名+城市)
     if (!AMAP_KEY) return res.json({ ok: false, source: 'amap', place: null, reason: 'no_amap_key' });
+    const aGet = async (url) => { try { const r = await fetchTO(url); return await r.json(); } catch { return null; } };
+    const aPick = (d) => { const ps = d && d.status === '1' && Array.isArray(d.pois) ? d.pois : []; return ps.find((p) => p.biz_ext && pnum(p.biz_ext.rating) != null) || ps[0] || null; };
+    const aPlace = (poi) => ({ source: 'amap', name: poi.name || name, rating: poi.biz_ext ? pnum(poi.biz_ext.rating) : null, ratingScale: 5, reviewCount: null, priceLevel: null, cost: poi.biz_ext ? pnum(poi.biz_ext.cost) : null, address: amapStr(poi.address) || [poi.pname, poi.cityname, poi.adname].filter(Boolean).join('') || null, type: amapStr(poi.type), tel: amapStr(poi.tel), url: null, city: amapStr(poi.cityname) });
     try {
-        const api = (lat != null && lng != null)
-            ? `https://restapi.amap.com/v3/place/around?key=${AMAP_KEY}&location=${encodeURIComponent(`${lng},${lat}`)}&keywords=${encodeURIComponent(name)}&radius=3000&offset=10&extensions=all`
-            : `https://restapi.amap.com/v3/place/text?key=${AMAP_KEY}&keywords=${encodeURIComponent(name)}${city ? `&city=${encodeURIComponent(city)}` : ''}&citylimit=false&offset=10&extensions=all`;
-        const r = await fetchTO(api);
-        const d = await r.json().catch(() => null);
+        let gLng = null, gLat = null, byAddress = false;
+        if (address) {
+            const gd = await aGet(`https://restapi.amap.com/v3/geocode/geo?key=${AMAP_KEY}&address=${encodeURIComponent(address)}${city ? `&city=${encodeURIComponent(city)}` : ''}`);
+            const loc = gd && gd.status === '1' && Array.isArray(gd.geocodes) && gd.geocodes[0] && gd.geocodes[0].location;
+            if (typeof loc === 'string') { const [lo, la] = loc.split(',').map(Number); if (Number.isFinite(lo) && Number.isFinite(la)) { gLng = lo; gLat = la; byAddress = true; } }
+        }
+        if (gLat == null && lat != null && lng != null) { const [aLat, aLng] = wgs84ToGcj02(lat, lng); gLat = aLat; gLng = aLng; }
+        if (gLat != null && gLng != null) {
+            const radius = byAddress ? 1200 : 3000;
+            const loc = encodeURIComponent(`${gLng},${gLat}`);
+            let poi = aPick(await aGet(`https://restapi.amap.com/v3/place/around?key=${AMAP_KEY}&location=${loc}&keywords=${encodeURIComponent(name)}&radius=${radius}&offset=10&extensions=all`));
+            if (!poi && byAddress) poi = aPick(await aGet(`https://restapi.amap.com/v3/place/around?key=${AMAP_KEY}&location=${loc}&radius=300&offset=10&extensions=all`));
+            if (!poi) return res.json({ ok: true, source: 'amap', place: null, reason: 'not_found' });
+            return res.json({ ok: true, source: 'amap', place: aPlace(poi) });
+        }
+        const d = await aGet(`https://restapi.amap.com/v3/place/text?key=${AMAP_KEY}&keywords=${encodeURIComponent(name)}${city ? `&city=${encodeURIComponent(city)}` : ''}&citylimit=false&offset=10&extensions=all`);
         if (!d) return res.json({ ok: false, source: 'amap', place: null, reason: 'amap_no_response' });
         if (d.status !== '1') return res.json({ ok: false, source: 'amap', place: null, reason: `amap_${d.infocode || 'err'}:${d.info || ''}` });
-        const pois = Array.isArray(d.pois) ? d.pois : [];
-        const poi = pois.find((p) => p.biz_ext && pnum(p.biz_ext.rating) != null) || pois[0];
+        const poi = aPick(d);
         if (!poi) return res.json({ ok: true, source: 'amap', place: null, reason: 'not_found' });
-        return res.json({ ok: true, source: 'amap', place: {
-            source: 'amap', name: poi.name || name,
-            rating: poi.biz_ext ? pnum(poi.biz_ext.rating) : null, ratingScale: 5,
-            reviewCount: null, priceLevel: null, cost: poi.biz_ext ? pnum(poi.biz_ext.cost) : null,
-            address: amapStr(poi.address) || [poi.pname, poi.cityname, poi.adname].filter(Boolean).join('') || null,
-            type: amapStr(poi.type), tel: amapStr(poi.tel), url: null, city: amapStr(poi.cityname),
-        } });
+        return res.json({ ok: true, source: 'amap', place: aPlace(poi) });
     } catch { return res.json({ ok: false, source: 'amap', place: null, reason: 'amap_network' }); }
 });
 

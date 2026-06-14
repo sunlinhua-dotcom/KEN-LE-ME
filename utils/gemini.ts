@@ -30,6 +30,8 @@ export interface StoreInfo {
     country: string | null;
     /** 城市 */
     city: string | null;
+    /** 照片里识别到的门牌/地址原文(用于地理编码精确定位) */
+    address: string | null;
     /** 境内 / 境外 */
     region: 'domestic' | 'overseas' | null;
     /** AI 自带知识的口碑提示(≤40 字,非实时;不认识则 null) */

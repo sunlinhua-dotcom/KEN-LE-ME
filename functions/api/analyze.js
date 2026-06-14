@@ -47,6 +47,12 @@ const PROMPT = `
          - store.name: the restaurant / bar / hotel / venue name (original language is fine).
          - store.brand: chain or group name if applicable, else null.
          - store.country / store.city: from any visible address or strong context.
+         - store.address: the most precise LOCATION CLUE you can READ from the image (门牌 / 路牌 / 招牌 / 小票 / 海报),
+           used to pin the venue's location. Copy it VERBATIM, preferring in this order:
+           ① full address with house number — 门牌 (e.g. "上海市黄浦区陕西南路123号" / "123 Market St, San Francisco");
+           ② street + number; ③ street name or a cross-street (e.g. "陕西南路 / 淮海中路口");
+           ④ a clear nearby landmark, metro station or mall (e.g. "陕西南路地铁站", "环贸 iapm").
+           ALWAYS prefer an on-image clue over a guess. Use null ONLY if the image shows no location text at all.
          - store.region: "domestic" for mainland China, otherwise "overseas".
          - store.reputationNote: ONLY if you genuinely recognize this SPECIFIC venue, a ≤40-char Chinese note on its
            general reputation/positioning (e.g. "米其林一星,人均偏高,口碑稳定"). If you do not recognize it, use null.
@@ -72,6 +78,7 @@ const PROMPT = `
           "brand": string | null,
           "country": string | null,
           "city": string | null,
+          "address": string | null,
           "region": "domestic" | "overseas" | null,
           "reputationNote": string | null
         },

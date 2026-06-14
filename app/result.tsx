@@ -46,7 +46,7 @@ const DEMO_DATA: Record<string, AnalysisResult> = {
     pit: {
         type: 'menu',
         currency: 'CNY',
-        store: { name: '外滩某餐酒馆(演示)', brand: null, country: '中国', city: '上海', region: 'domestic', reputationNote: null },
+        store: { name: '外滩某餐酒馆(演示)', brand: null, country: '中国', city: '上海', address: '上海市黄浦区中山东一路 18 号', region: 'domestic', reputationNote: null },
         summary: '💰最值:长城天赋,店里卖得跟电商差不多,良心。 💸最贵:这瓶 1499 的奔富比电商贵出一只 iPhone。 😈点评:这酒单看着唬人,实则一半靠"看不懂"的进口名收智商税,懂行的直接点长城走人。',
         items: [
             { name: '奔富 BIN389 设拉子赤霞珠', menuPrice: 1499, onlinePrice: 558, ratio: 2.69, diff: 941, characteristics: '澳洲名庄,商务宴请硬通货,但餐厅加价最狠', rating: 8.6, roast: '这价够买俩瓶还多张电影票', knowledge: '澳洲南澳产区,奔富 BIN 系列经典款,设拉子为主混赤霞珠,可陈放 10 年以上。' },
@@ -69,7 +69,7 @@ const DEMO_DATA: Record<string, AnalysisResult> = {
     overseas: {
         type: 'menu',
         currency: 'USD',
-        store: { name: 'The Wine Bar SF (demo)', brand: null, country: '美国', city: 'San Francisco', region: 'overseas', reputationNote: null },
+        store: { name: 'The Wine Bar SF (demo)', brand: null, country: '美国', city: 'San Francisco', address: '123 Market St, San Francisco, CA', region: 'overseas', reputationNote: null },
         summary: '💰最值:Caymus 加价最克制。 💸最贵:那瓶 Opus One 翻了快三倍。 😈点评:旧金山的酒吧也懂宰游客,折成人民币更肉疼,挑加价低的点。',
         items: [
             { name: 'Opus One 2019', menuPrice: 620, onlinePrice: 230, ratio: 2.70, diff: 390, characteristics: '纳帕传奇,黑加仑与雪松,结构宏大', rating: 9.2, roast: '折人民币四千多,慎点', knowledge: '美国纳帕谷,Mondavi 与木桐合作名庄,波尔多风格旗舰。' },
@@ -242,7 +242,7 @@ export default function ResultScreen() {
         const region = decideRegion(store, co, result.currency);
         setStoreLoading(true);
         setStoreReason(undefined);
-        lookupStore({ name: store.name, city: store.city, country: store.country, region, coords: co })
+        lookupStore({ name: store.name, city: store.city, country: store.country, address: store.address, region, coords: co })
             .then((res) => { if (!isAlive()) return; setStorePlace(res.place); setStoreReason(res.reason); })
             .catch(() => { if (!isAlive()) return; setStorePlace(null); setStoreReason('network'); })
             .finally(() => { if (isAlive()) setStoreLoading(false); });
