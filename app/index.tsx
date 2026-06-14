@@ -285,23 +285,25 @@ export default function HomeScreen() {
                                     拍下酒单,AI 一秒看穿溢价,毒舌点评帮你避坑
                                 </Text>
 
-                                {/* ── 新功能高亮:境外换算 + 店铺背调 ── */}
-                                <View className="mt-4 w-full" style={{ maxWidth: 300 }}>
-                                    <View className="flex-row items-center mb-2.5">
-                                        <View className="w-6 h-6 rounded-full items-center justify-center mr-2.5" style={{ backgroundColor: 'rgba(255,194,75,0.14)', borderWidth: 1, borderColor: 'rgba(255,194,75,0.34)' }}>
-                                            <Globe size={13} color={KC.amber} />
+                                {/* ── 新功能高亮(对联式左右对称):左联境外换算 / 右联店铺背调 ── */}
+                                <View className="mt-4 flex-row items-stretch justify-center w-full" style={{ maxWidth: 330 }}>
+                                    {/* 左联:境外换算 */}
+                                    <View className="flex-1 items-center px-1.5">
+                                        <View className="w-8 h-8 rounded-full items-center justify-center mb-1.5" style={{ backgroundColor: 'rgba(255,194,75,0.14)', borderWidth: 1, borderColor: 'rgba(255,194,75,0.34)' }}>
+                                            <Globe size={16} color={KC.amber} />
                                         </View>
-                                        <Text className="text-[12px] flex-1 leading-4" style={{ color: KC.textMid }}>
-                                            <Text style={{ color: KC.goldSoft, fontWeight: '800' }}>境外不踩坑</Text> · 外币价一秒折成人民币
-                                        </Text>
+                                        <Text className="text-[13px] font-black" style={{ color: KC.goldSoft }}>境外不踩坑</Text>
+                                        <Text className="text-[11px] mt-0.5" style={{ color: KC.textLow, lineHeight: 14, textAlign: 'center' }}>外币 → 人民币</Text>
                                     </View>
-                                    <View className="flex-row items-center">
-                                        <View className="w-6 h-6 rounded-full items-center justify-center mr-2.5" style={{ backgroundColor: 'rgba(46,230,168,0.14)', borderWidth: 1, borderColor: 'rgba(46,230,168,0.34)' }}>
-                                            <MapPin size={13} color={KC.mint} />
+                                    {/* 中缝 */}
+                                    <View style={{ width: 1, alignSelf: 'center', height: 44, backgroundColor: 'rgba(232,194,104,0.25)' }} />
+                                    {/* 右联:店铺背调 */}
+                                    <View className="flex-1 items-center px-1.5">
+                                        <View className="w-8 h-8 rounded-full items-center justify-center mb-1.5" style={{ backgroundColor: 'rgba(46,230,168,0.14)', borderWidth: 1, borderColor: 'rgba(46,230,168,0.34)' }}>
+                                            <MapPin size={16} color={KC.mint} />
                                         </View>
-                                        <Text className="text-[12px] flex-1 leading-4" style={{ color: KC.textMid }}>
-                                            <Text style={{ color: KC.mint, fontWeight: '800' }}>进店先背调</Text> · 门头一拍,高德 / Google 起底
-                                        </Text>
+                                        <Text className="text-[13px] font-black" style={{ color: KC.mint }}>进店先背调</Text>
+                                        <Text className="text-[11px] mt-0.5" style={{ color: KC.textLow, lineHeight: 14, textAlign: 'center' }}>高德 / Google</Text>
                                     </View>
                                 </View>
                             </Reveal>
