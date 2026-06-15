@@ -73,6 +73,53 @@ function processItems(result: AnalysisResult): AnalysisResult {
     return { ...result, items: processedItems };
 }
 
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * POST /api/analyze —— 带超时 + 自动重试。
+ * 识别本身要 10-30s+,大陆访问 Cloudflare 弱网时长请求易掉线;一次抖动就失败太脆。
+ * 策略:单次最长等 75s;网络中断 / 超时 / 服务端 5xx 自动重试(最多 3 次、退避);
+ * 4xx(图片问题等)不重试直接返回。错误文案区分"超时 / 断网",不再一律"网络波动"。
+ */
+async function postAnalyze(body: { images: string[] }): Promise<AnalysisResult> {
+    const ATTEMPTS = 3;
+    const TIMEOUT_MS = 75000;
+    let lastError = '网络不稳,请稍后重试';
+
+    for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        try {
+            const resp = await fetch(API_PROXY, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+                signal: controller.signal,
+            });
+            clearTimeout(timer);
+            const parsed = (await resp.json().catch(() => null)) as (AnalysisResult & { error?: string }) | null;
+
+            if (resp.ok && parsed) return parsed;
+
+            // 服务端返回错误:5xx 值得重试,4xx(图片格式/数量等)直接返回
+            const msg = (parsed && parsed.error) || `分析服务暂不可用 (${resp.status})`;
+            if (resp.status >= 500 && attempt < ATTEMPTS) { lastError = msg; await sleep(1000 * attempt); continue; }
+            return errorResult(msg);
+        } catch (e) {
+            clearTimeout(timer);
+            const aborted = e instanceof Error && e.name === 'AbortError';
+            lastError = aborted ? '识别超时(图片偏多或网络较慢)' : '网络连接中断';
+            if (attempt < ATTEMPTS) { await sleep(1000 * attempt); continue; }
+            return errorResult(
+                aborted
+                    ? '识别超时:图片偏多或网络较慢,建议少拍一两张、或换个网络重试'
+                    : '网络连接不稳,多次重试仍失败,请稍后再试',
+            );
+        }
+    }
+    return errorResult(lastError);
+}
+
 export async function analyzeWineList(imageUris: string[]): Promise<AnalysisResult> {
     try {
         // 本地压缩 + 转 base64(减小上传体积),全部并行
@@ -104,19 +151,8 @@ export async function analyzeWineList(imageUris: string[]): Promise<AnalysisResu
         const base64List = await Promise.all(base64Promises);
         if (base64List.some(b => !b)) return errorResult('图片处理失败,请重试');
 
-        // 调服务端转发(key 在服务端,前端拿不到)
-        const resp = await fetch(API_PROXY, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ images: base64List }),
-        });
-
-        if (!resp.ok) {
-            const errBody = await resp.json().catch(() => ({} as { error?: string }));
-            return errorResult(errBody.error || `分析服务暂不可用 (${resp.status})`);
-        }
-
-        const data = (await resp.json()) as AnalysisResult;
+        // 调服务端转发(key 在服务端,前端拿不到)。带超时 + 自动重试,弱网更稳。
+        const data = await postAnalyze({ images: base64List });
         if (data.error) return errorResult(data.error);
         if (!Array.isArray(data.items)) return errorResult('返回数据异常,请重试');
 
